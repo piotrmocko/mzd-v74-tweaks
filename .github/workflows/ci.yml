@@ -8,6 +8,8 @@ name: CI
 #  - the shims in jci-shims/ are exactly what mazda/patches/ builds to,
 #  - tests/fuel-consumption/installer: fuel-consumption.sh simulated in busybox
 #    (install, uninstall, damaged files, failed edits and restores, ...),
+#  - tests/other-installers: no-more-disclaimer.sh and hud-eu-region.sh
+#    simulated in busybox (JS file install/uninstall and safety checks),
 #  - tests/fuel-consumption/shim: the shims under qemu-arm against stand-in libraries.
 on:
   push:
@@ -120,6 +122,10 @@ jobs:
       - name: Simulate fuel-consumption.sh in busybox
         # /usb is a tmpfs mount, like the USB drive: the installer finds it in /proc/mounts.
         run: docker run --rm --tmpfs /usb -v "$PWD:/repo:ro" busybox:1.36 sh /repo/tests/fuel-consumption/installer/run.sh
+
+      - name: Simulate other installers in busybox
+        # These installers only modify JS files; sm.conf does not apply.
+        run: docker run --rm --tmpfs /usb -v "$PWD:/repo:ro" busybox:1.36 sh /repo/tests/other-installers/run.sh
 
   shims:
     runs-on: ubuntu-latest
