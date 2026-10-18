@@ -26,14 +26,19 @@ hwclock --hctosys
 
 MYDIR=$(dirname "$(readlink -f "$0")")
 SELF=$(readlink -f "$0")
+SELF_NAME=$(basename "$SELF")
+
 # Make the USB drive writable: find its mount point (also works from a subfolder).
 MP="$MYDIR"
 while [ "$MP" != "/" ] && ! grep -q " $MP " /proc/mounts; do MP=$(dirname "$MP"); done
 mount -o rw,remount "$MP"
+
 mkdir -p "${MYDIR}/logs"
-LOG="${MYDIR}/logs/fuel-consumption.log"
+LOG_FILE="${SELF_NAME%.sh}.log"
+LOG="${MYDIR}/logs/${LOG_FILE}"
+
 exec > "$LOG" 2>&1
-echo "=== Fuel Consumption tweaks start ==="
+echo "=== ${TITLE} start ==="
 date
 
 # Rename the mp3 folder while the script runs, so the head unit does not jump back to
@@ -76,14 +81,14 @@ ask() {
 _want=$(md5_from "${SELF}.md5")
 if [ -z "$_want" ] || [ "$_want" != "$(md5_of "$SELF")" ]
 then
-  echo "ERROR: md5 of fuel-consumption.sh does not match fuel-consumption.sh.md5"
+  echo "ERROR: md5 of ${SELF_NAME} does not match ${SELF_NAME}.md5"
   mp3_back
   info "The installer on the USB drive is damaged (md5).\nNOTHING was changed.\nCopy it again."
   sleep 15
   dialog_kill
   exit 1
 fi
-echo "md5 OK   fuel-consumption.sh"
+echo "md5 OK   ${SELF_NAME}"
 
 # --- Require CMU firmware V74.00.324 ---
 CMU_VER=$(grep '^JCI_SW_VER=' /jci/version.ini | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
@@ -98,7 +103,7 @@ then
 fi
 
 # --- Safety question: if started by accident, nothing changes ---
-if ! ask "Fuel Consumption tweaks:\nbar values, fuel ending screen, fuel ending data.\nEach step can be skipped.\nExit: nothing is changed." "Continue" "Exit"
+if ! ask "Tweaks:\nbar values, fuel ending screen, fuel ending data.\nEach step can be skipped.\nExit: nothing is changed." "Continue" "Exit"
 then
   echo "exit requested by the user"
   mp3_back
@@ -117,17 +122,6 @@ make_rw() {
     echo 1 > /sys/class/gpio/Watchdog\ Disable/value
     mount -o rw,remount /
     RW_DONE=1
-  fi
-}
-
-# Show the result of a step. OK goes on, Exit skips the remaining steps.
-step_done() {
-  echo "$1" | sed 's/\\n/ /g'
-  sync
-  if ! ask "$1" "OK" "Exit"
-  then
-    echo "remaining steps skipped by the user"
-    STOP=1
   fi
 }
 
@@ -189,7 +183,7 @@ js_install() {
       then
         RESULT="$1:\nthe copy failed.\nThe original was restored."; return 1
       fi
-      RESULT="$1:\ncopy AND restore failed!\nDo NOT reboot, check logs/fuel-consumption.log."; STOP=1; FATAL=1; return 1
+      RESULT="$1:\ncopy AND restore failed!\nDo NOT reboot, check logs/${LOG_FILE}."; STOP=1; FATAL=1; return 1
     fi
   fi
   ls -la "$_app" "$_bak"
@@ -228,7 +222,7 @@ js_uninstall() {
   [ "$(md5_of "$_app")" = "$_org_md5" ] || { cp -a "$_bak" "$_app"; sync; }
   if [ "$(md5_of "$_app")" != "$_org_md5" ]
   then
-    RESULT="$1:\nthe restore failed!\nDo NOT reboot, check logs/fuel-consumption.log."; STOP=1; FATAL=1; return 1
+    RESULT="$1:\nthe restore failed!\nDo NOT reboot, check logs/${LOG_FILE}."; STOP=1; FATAL=1; return 1
   fi
   rm -f "$_bak" && sync
   echo "md5 OK   $_app (original)"
@@ -352,9 +346,7 @@ shim_install() {
   make_rw
   if ! shim_backup_confs
   then
-    RESULT="${_name}:
-the backup of sm.conf failed.
-Nothing was changed."; return 1
+    RESULT="${_name}:\nthe backup of sm.conf failed.\nNothing was changed."; return 1
   fi
   mkdir -p "$SHIM_DIR"
   cat "$_src" > "${SHIM_DIR}/${SHIM}" && chmod 0644 "${SHIM_DIR}/${SHIM}" && sync
@@ -384,7 +376,7 @@ Nothing was changed."; return 1
       then
         RESULT="${_name}:\nediting ${_c} failed.\nEverything was restored."; return 1
       fi
-      RESULT="${_name}:\nediting ${_c} failed and the restore failed!\nDo NOT reboot, check logs/fuel-consumption.log."; STOP=1; FATAL=1; return 1
+      RESULT="${_name}:\nediting ${_c} failed and the restore failed!\nDo NOT reboot, check logs/${LOG_FILE}."; STOP=1; FATAL=1; return 1
     fi
   done
   CHANGED=1
@@ -410,7 +402,7 @@ shim_uninstall() {
     echo "$_c: lines now: $_n"
     if [ "$_n" != "0" ]
     then
-      RESULT="${_name}:\nrestoring ${_c} failed!\nDo NOT reboot, check logs/fuel-consumption.log."; STOP=1; FATAL=1; return 1
+      RESULT="${_name}:\nrestoring ${_c} failed!\nDo NOT reboot, check logs/${LOG_FILE}."; STOP=1; FATAL=1; return 1
     fi
     rm -f "/jci/sm/${_c}.fuelend-orig"
   done
@@ -441,8 +433,18 @@ run_step() {
   else
     $_uninst "$_sname" "$@"
   fi
-  [ $? -ne 0 ] && echo "ERROR: $(echo "$RESULT" | sed 's/\\n/ /g')"
-  step_done "$RESULT"
+  if [ $? -ne 0 ]; then
+    echo "ERROR: $(echo "$RESULT" | sed 's/\\n/ /g')"
+  else
+    echo "$(echo "$RESULT" | sed 's/\\n/ /g')"
+  fi
+  sync
+  # Show the result of a step. OK goes on, Exit skips the remaining steps.
+  if ! ask "$RESULT" "OK" "Exit"
+  then
+    echo "remaining steps skipped by the user"
+    STOP=1
+  fi
 }
 
 run_step "Bar values" \
@@ -467,22 +469,22 @@ run_step "Fuel ending data" \
 sync
 if [ "$FATAL" = "1" ]
 then
-  echo "=== Fuel Consumption tweaks STOPPED after a failed restore, no reboot ==="
+  echo "=== ${TITLE} STOPPED after a failed restore, no reboot ==="
   sync
-  info "A restore failed.\nDo NOT reboot, check logs/fuel-consumption.log.\nThe mp3 folder on the USB drive is now mp3_off."
+  info "A restore failed.\nDo NOT reboot, check logs/${LOG_FILE}.\nThe mp3 folder on the USB drive is now mp3_off."
   sleep 15
   dialog_kill
   exit 1
 elif [ "$CHANGED" = "1" ]
 then
-  echo "=== Fuel Consumption tweaks complete, rebooting ==="
+  echo "=== ${TITLE} complete, rebooting ==="
   mp3_back
   info "Done.\nRemove the USB drive.\nRebooting in 15 seconds..."
   sleep 15
   dialog_kill
   reboot
 else
-  echo "=== Fuel Consumption tweaks complete, nothing changed ==="
+  echo "=== ${TITLE} complete, nothing changed ==="
   mp3_back
   info "Nothing was changed.\nRemove the USB drive.\nThen type exit to leave the terminal."
   sleep 15
