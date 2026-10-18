@@ -1,0 +1,71 @@
+name: Build
+
+# Builds the shims in mazda/patches/ with the m3-toolchain, so users never have to.
+#
+#  - push to main that touches the shim sources (or manual run): if the build output
+#    differs from jci-shims/, open a PR that updates jci-shims/*.so and *.so.md5.
+#    (Needs: Settings > Actions > General > "Allow GitHub Actions to create and
+#    approve pull requests".)
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mazda/patches/**'
+      - 'build/**'
+      - 'tests/fuel-consumption/shim/**'
+      - '.gitmodules'
+      - '.github/workflows/build.yml'
+      - '.github/actions/m3-toolchain/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/m3-toolchain
+
+      - name: Build shims
+        run: |
+          set -euo pipefail
+          sh build/build.sh
+          for so in jci-shims/*.so; do
+            file "$so"
+            file "$so" | grep -q 'ELF 32-bit.*ARM' || { echo "::error::$so is not an ARM shared object"; exit 1; }
+          done
+          git status --short jci-shims
+
+      # Same tests as CI, on the binaries this workflow is about to publish.
+      - name: Test the shims under qemu-arm
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-user
+          sh tests/fuel-consumption/shim/run.sh
+
+      - name: Simulate fuel-consumption.sh in busybox
+        run: docker run --rm --tmpfs /usb -v "$PWD:/repo:ro" busybox:1.36 sh /repo/tests/fuel-consumption/installer/run.sh
+
+      # Propose the new binaries as a PR (only if they changed).
+      - name: Open PR with updated shims
+        uses: peter-evans/create-pull-request@v7
+        with:
+          add-paths: jci-shims/*
+          branch: auto/update-jci-shims
+          delete-branch: true
+          commit-message: "chore: Rebuild jci-shims from mazda/patches"
+          title: "chore: Rebuild jci-shims from mazda/patches"
+          body: |
+            Automatically built by the Build workflow with the m3-toolchain pinned by the
+            `mazda/m3-toolchain` submodule. The `.so.md5` files are updated with the binaries,
+            so the installers will accept them.

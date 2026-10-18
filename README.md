@@ -156,7 +156,7 @@ mzd-v74-tweaks/
 │   ├── ecoenergyApp.js.org            # Original Fuel Consumption app
 │   └── FuelConsumptionCtrl.js.org     # Original Fuel Consumption graphs
 ├── jci-patches/                       # Scripts that create jci-mods files from jci-org
-├── jci-shims/                         # Prebuilt shims (+ .md5), built by the Release workflow
+├── jci-shims/                         # Prebuilt shims (+ .md5), updated by the Build workflow
 │   └── fuel_ending_mmui.so            # LD_PRELOAD shim for jciMMUI
 ├── mazda/
 │   ├── m3-toolchain/                  # Cross toolchain (git submodule, Git LFS)
@@ -216,8 +216,8 @@ If you encounter issues:
 ## Contributing
 
 - Every file an installer brings, and the installer itself, has an `.md5` next to it (`md5sum` format). The **CI** workflow fails if any `.md5` does not match its file. It also checks that `jci-patches/` reproduces `jci-mods/`, that the shell scripts parse, and that `jci-shims/` matches what `mazda/patches/` builds to.
-- CI also runs the tests in `tests/`: `fuel-consumption/installer/run.sh` simulates `fuel-consumption.sh` in busybox (`docker run --rm --tmpfs /usb -v "$PWD:/repo:ro" busybox:1.36 sh /repo/tests/fuel-consumption/installer/run.sh`), and `fuel-consumption/shim/run.sh` runs the shims under qemu-arm against stand-in libraries (needs the m3-toolchain and `qemu-user`). The Release workflow runs both before it publishes anything.
-- The **Release** workflow builds the shims with the pinned m3-toolchain. On `main` it opens a PR when `jci-shims/` changes. On an `X.Y.Z` tag it publishes a release with a ready-to-copy USB drive ZIP.
+- CI also runs the tests in `tests/`: `fuel-consumption/installer/run.sh` simulates `fuel-consumption.sh` in busybox (`docker run --rm --tmpfs /usb -v "$PWD:/repo:ro" busybox:1.36 sh /repo/tests/fuel-consumption/installer/run.sh`), and `fuel-consumption/shim/run.sh` runs the shims under qemu-arm against stand-in libraries (needs the m3-toolchain and `qemu-user`). The **Build** and **Release** workflows run these tests as part of their validation.
+- The **Build** workflow rebuilds shims with the pinned m3-toolchain and opens a PR when `jci-shims/` changes. The **Release** workflow is manual-only and publishes a ready-to-copy USB drive ZIP. Its version starts at `1.0.0`; later releases use semantic commit-message bumps (`feat` = minor, `fix` and other changes = patch, `BREAKING CHANGE` or `!` = major). Release descriptions list non-merge commit subjects since the previous release.
 
 ## Disclaimer
 
