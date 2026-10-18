@@ -216,7 +216,7 @@ If you encounter issues:
 ## Contributing
 
 - Every file an installer brings, and the installer itself, has an `.md5` next to it (`md5sum` format). The **CI** workflow fails if any `.md5` does not match its file. It also checks that `jci-patches/` reproduces `jci-mods/`, that the shell scripts parse, and that `jci-shims/` matches what `mazda/patches/` builds to.
-- CI also runs the tests in `tests/`: `tests/installer/run.sh` simulates `fuel-consumption.sh` in busybox (`docker run --rm --tmpfs /usb -v "$PWD:/repo:ro" busybox:1.36 sh /repo/tests/installer/run.sh`), and `tests/shim/run.sh` runs the shims under qemu-arm against stand-in libraries (needs the m3-toolchain and `qemu-user`). The Release workflow runs both before it publishes anything.
+- CI also runs the tests in `tests/`: `fuel-consumption/installer/run.sh` simulates `fuel-consumption.sh` in busybox (`docker run --rm --tmpfs /usb -v "$PWD:/repo:ro" busybox:1.36 sh /repo/tests/fuel-consumption/installer/run.sh`), and `fuel-consumption/shim/run.sh` runs the shims under qemu-arm against stand-in libraries (needs the m3-toolchain and `qemu-user`). The Release workflow runs both before it publishes anything.
 - The **Release** workflow builds the shims with the pinned m3-toolchain. On `main` it opens a PR when `jci-shims/` changes. On an `X.Y.Z` tag it publishes a release with a ready-to-copy USB drive ZIP.
 
 ## Disclaimer

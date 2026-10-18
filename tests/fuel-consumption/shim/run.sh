@@ -3,10 +3,10 @@
 # (eco.c, stubs.c; the Mazda libraries cannot be in the repo) and checks what the
 # ending state machine does with and without the shim.
 #
-# Usage (Linux x86_64, needs qemu-user):  sh tests/shim/run.sh [path/to/m3-toolchain]
+# Usage (Linux x86_64, needs qemu-user):  sh tests/fuel-consumption/shim/run.sh [path/to/m3-toolchain]
 # Exit code: 0 if every check passed.
 set -u
-ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
 TC="${1:-$ROOT/mazda/m3-toolchain}"
 CC="$TC/bin/arm-cortexa9_neon-linux-gnueabi-gcc"
 SYSROOT="$TC/arm-cortexa9_neon-linux-gnueabi/sysroot"
@@ -20,10 +20,10 @@ W=$(mktemp -d)
 trap 'rm -rf "$W"' EXIT
 mkdir -p "$W/lib" "$W/uia"
 set -e
-"$CC" $A -shared -fPIC -DEEM -o "$W/lib/libjcieem_client.so" "$ROOT/tests/shim/stubs.c"
-"$CC" $A -shared -fPIC -o "$W/uia/libjciuiaecoenergy.so" "$ROOT/tests/shim/eco.c" -L"$W/lib" -ljcieem_client
-"$CC" $A -shared -fPIC -DMMUI -o "$W/svcjcimmui.so" "$ROOT/tests/shim/stubs.c" -ldl
-"$CC" $A -DLAUNCHER -o "$W/sm_svclauncher" "$ROOT/tests/shim/stubs.c" -ldl
+"$CC" $A -shared -fPIC -DEEM -o "$W/lib/libjcieem_client.so" "$ROOT/tests/fuel-consumption/shim/stubs.c"
+"$CC" $A -shared -fPIC -o "$W/uia/libjciuiaecoenergy.so" "$ROOT/tests/fuel-consumption/shim/eco.c" -L"$W/lib" -ljcieem_client
+"$CC" $A -shared -fPIC -DMMUI -o "$W/svcjcimmui.so" "$ROOT/tests/fuel-consumption/shim/stubs.c" -ldl
+"$CC" $A -DLAUNCHER -o "$W/sm_svclauncher" "$ROOT/tests/fuel-consumption/shim/stubs.c" -ldl
 set +e
 
 FAILS=0
@@ -85,14 +85,14 @@ run 3 0 "$SHIM"; exit_ok F; check F 1 "ending=none"; eem F
 
 echo "### G) guards not found (other software) -> stock behaviour, code 11"
 cp "$W/uia/libjciuiaecoenergy.so" "$W/eco.bak"
-"$CC" $A -shared -fPIC -o "$W/uia/libjciuiaecoenergy.so" "$ROOT/tests/shim/eco.c" -L"$W/lib" -ljcieem_client \
+"$CC" $A -shared -fPIC -o "$W/uia/libjciuiaecoenergy.so" "$ROOT/tests/fuel-consumption/shim/eco.c" -L"$W/lib" -ljcieem_client \
   -DUIA_ECOENERGY_isPrevEngRunNEndingSetOnNEndingIsEffectiveness=X_eff \
   -DUIA_ECOENERGY_isPrevEngRunNEndingSetOnNEndingIsFuelConsumption=X_fuel
 run 3 1 "$SHIM"; exit_ok G; check G 1 "ending=ISTOP"; eem G 11; check G 1 "log: .*passthrough"
 cp "$W/eco.bak" "$W/uia/libjciuiaecoenergy.so"
 
 echo "### H) EEM library with a SONAME -> same as B"
-"$CC" $A -shared -fPIC -DEEM -Wl,-soname,libjcieem_client.so -o "$W/lib/libjcieem_client.so" "$ROOT/tests/shim/stubs.c"
+"$CC" $A -shared -fPIC -DEEM -Wl,-soname,libjcieem_client.so -o "$W/lib/libjcieem_client.so" "$ROOT/tests/fuel-consumption/shim/stubs.c"
 run 3 1 "$SHIM"; exit_ok H; check H 1 "ending=FUEL"; eem H 12
 
 echo "### I) shim preloaded into an unrelated process -> does nothing"

@@ -5,7 +5,7 @@
 # installer checks are dummy files (the md5s in the test copy of the installer are
 # replaced with theirs).
 #
-#   docker run --rm --tmpfs /usb -v "$PWD:/repo:ro" busybox:1.36 sh /repo/tests/installer/run.sh
+#   docker run --rm --tmpfs /usb -v "$PWD:/repo:ro" busybox:1.36 sh /repo/tests/fuel-consumption/installer/run.sh
 #
 # /usb must be a mount point (the USB drive): the installer finds the drive in /proc/mounts.
 #
