@@ -11,8 +11,8 @@ A collection of tweaks and modifications for the Mazda infotainment system (CMU 
 ## Installation Instructions
 
 1. **Download and Prepare**
-   - Clone or download all files from this repository
-   - Place all files on a FAT32 formatted USB drive (max 32 GB)
+   - Download latest release ZIP file
+   - Unpack all files directly on a FAT32 formatted USB drive (max 32 GB)
 
 2. **Connect to Vehicle**
    - Start ACC (Accessory mode) without igniting the engine
@@ -32,7 +32,7 @@ A collection of tweaks and modifications for the Mazda infotainment system (CMU 
    - Run the desired script: `sh NAME_OF_FILE.sh`
    - Follow the on-screen prompts
    - Wait 30-120 seconds (or more) for the system to restart
-   - If returned to terminal, review `logs` directory and `exit` or `reboot`
+   - If returned to terminal, review `logs` directory and `exit` or `reboot` to return to MZD
 
 ## Available Scripts
 
@@ -76,38 +76,7 @@ A collection of tweaks and modifications for the Mazda infotainment system (CMU 
 - Original system files are automatically backed up before modification
 - Logs are saved to `logs/install.log` or `logs/uninstall.log`
 
-### 3. `backup-jci.sh` - JCI Full System Backup
-**Purpose**: Creates a complete backup of the JCI system directory.
-
-**What it does**:
-- Creates a ZIP archive of the entire `/jci` directory
-- Automatically checks for sufficient free space on USB drive
-
-**Requirements**:
-- At least 170 MB of free space on USB drive
-
-**Output**:
-- Backup file: `JCI-[VERSION].zip`
-- Log file: `logs/backup.log`
-- Use this backup to restore your system to a known-good state
-
-### 4. `revert-aio.sh` - Uninstall AIO base Tweaks only
-**Purpose**: Removes previously installed base modifications of AIO (All-In-One) Tweaks from your system. It doesn't remove the targeted mods. Remove them with AIO scripts.
-
-**What it does**:
-- Restores original configurations:
-  - `/jci/sm/sm.conf` - System Manager configuration
-  - `/jci/opera/opera_home/opera.ini` - Opera browser settings
-  - `/jci/opera/opera_dir/userjs/fps.js` - Frame rate settings
-- Verifies file integrity before completion
-- Logs all operations for troubleshooting
-
-**Running**:
-- Run the script and confirm when prompted
-- System will reboot automatically upon completion
-- Check `logs/uninstall.log` if errors occur
-
-### 5. `fuel-consumption.sh` - Fuel Consumption Tweaks
+### 3. `fuel-consumption.sh` - Fuel Consumption Tweaks
 **Purpose**: Three tweaks for the Fuel Consumption app. Each one can be installed, uninstalled or skipped on its own:
 - **Bar values**: the L/100km value above every bar of both graphs. Stock firmware shows it only above "Current".
 - **Fuel ending screen**: at ignition off, show the Fuel Consumption screen instead of the i-stop screen (cars with i-stop always get the i-stop screen), for 7 s instead of 5 s.
@@ -134,29 +103,59 @@ A collection of tweaks and modifications for the Mazda infotainment system (CMU 
 - Log: `logs/fuel-consumption.log`.
 - Details, checksums, how to rebuild the shim or re-create the JS files: [docs/fuel-consumption.md](docs/fuel-consumption.md).
 
+### 4. `backup-jci.sh` - JCI Full System Backup
+**Purpose**: Creates a complete backup of the JCI system directory.
+
+**What it does**:
+- Creates a ZIP archive of the entire `/jci` directory
+- Automatically checks for sufficient free space on USB drive
+
+**Requirements**:
+- At least 170 MB of free space on USB drive
+
+**Output**:
+- Backup file: `JCI-[VERSION].zip`
+- Log file: `logs/backup.log`
+- Use this backup to restore your system to a known-good state
+
+### 5. `revert-aio.sh` - Uninstall AIO base Tweaks only
+**Purpose**: Removes previously installed base modifications of AIO (All-In-One) Tweaks from your system. It doesn't remove the targeted mods. Remove them with AIO scripts.
+
+**What it does**:
+- Restores original configurations:
+  - `/jci/sm/sm.conf` - System Manager configuration
+  - `/jci/opera/opera_home/opera.ini` - Opera browser settings
+  - `/jci/opera/opera_dir/userjs/fps.js` - Frame rate settings
+- Verifies file integrity before completion
+- Logs all operations for troubleshooting
+
+**Running**:
+- Run the script and confirm when prompted
+- System will reboot automatically upon completion
+- Check `logs/uninstall.log` if errors occur
+
 ## File Structure
 
 ```
 mzd-v74-tweaks/
 ├── README.md                          # This file
-├── images/                            # Screenshosts for documentation
 ├── hud-eu-region.sh                   # HUD settings modification script
 ├── no-more-disclaimer.sh              # Disclaimer removal script
-├── fuel-consumption.sh                # Fuel Consumption tweaks (+ fuel-consumption.sh.md5)
+├── fuel-consumption.sh                # Fuel Consumption tweaks
 ├── backup-jci.sh                      # System backup script
 ├── revert-aio.sh                      # AIO tweaks uninstaller
-├── jci-mods/                          # Modified application files (+ .md5)
+├── jci-mods/                          # Modified application files
 │   ├── vehsettingsApp.js              # Modified vehicle settings app
 │   ├── systemApp.js                   # Modified system app
 │   ├── ecoenergyApp.js                # Modified Fuel Consumption app
 │   └── FuelConsumptionCtrl.js         # Modified Fuel Consumption graphs
-├── jci-org/                           # Original backup files (+ .md5)
+├── jci-org/                           # Original backup files
 │   ├── vehsettingsApp.js.org          # Original vehicle settings app
 │   ├── systemApp.js.org               # Original system app
 │   ├── ecoenergyApp.js.org            # Original Fuel Consumption app
 │   └── FuelConsumptionCtrl.js.org     # Original Fuel Consumption graphs
 ├── jci-patches/                       # Scripts that create jci-mods files from jci-org
-├── jci-shims/                         # Prebuilt shims (+ .md5), updated by the Build workflow
+├── jci-shims/                         # Prebuilt shims, updated by the Build workflow
 │   └── fuel_ending_mmui.so            # LD_PRELOAD shim for jciMMUI
 ├── mazda/
 │   ├── m3-toolchain/                  # Cross toolchain (git submodule, Git LFS)
@@ -164,6 +163,8 @@ mzd-v74-tweaks/
 ├── build/build.sh                     # Builds mazda/patches/* into jci-shims/
 ├── docs/                              # Details, build and patch instructions
 ├── tests/                             # CI tests: installer in busybox, shims in qemu-arm
+├── images/                            # Screenshosts for documentation
+├── *.md5                              # MD5 checksums
 ├── js/                                # JavaScript utility files
 │   └── run.js                         # Execution script
 ├── mp3/                               # Audio files for testing
