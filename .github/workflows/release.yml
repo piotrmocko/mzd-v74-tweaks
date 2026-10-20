@@ -82,16 +82,16 @@ jobs:
           package="staging/mzd-v74-tweaks-${version}"
           mkdir -p "$package"
           cp -R ./*.sh ./*.md5 mp3title.txt js mp3 jci-mods jci-org jci-shims "$package/"
+          cp -R autorun/. "$package/"
 
           while IFS= read -r -d '' checksum; do
-            target="${checksum%.md5}"
-            if [ ! -f "$target" ]; then
-              echo "::error file=$checksum::checksum target $target is missing from the release package"
+            if ! (cd "$(dirname "$checksum")" && md5sum -c "$(basename "$checksum")"); then
+              echo "::error file=$checksum::checksum verification failed"
               exit 1
             fi
           done < <(find "$package" -type f -name '*.md5' -print0)
 
           archive="dist/mzd-v74-tweaks-${version}.zip"
-          (cd staging && zip -qr "../$archive" "mzd-v74-tweaks-${version}")
+          (cd "$package" && zip -qr "$GITHUB_WORKSPACE/$archive" .)
           unzip -l "$archive"
-          gh release create "$version" "$archive" --title "$version" --notes-file "$notes"
+          gh release create "$version" "$archive" --title "$version" --notes-file "$notes" --target "$GITHUB_SHA"
