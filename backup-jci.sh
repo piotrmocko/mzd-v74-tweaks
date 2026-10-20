@@ -20,8 +20,12 @@ confirm() {
 ask() {
   dialog_kill
   # Display a 3-button dialog if a third button label is provided.
-  [ -z "$4" ] && /jci/tools/jci-dialog --question --title="$TITLE" --text="$1" --ok-label="$2" --cancel-label="$3"
-  [ -n "$4" ] && /jci/tools/jci-dialog --3-button-dialog --title="$TITLE" --text="$1" --ok-label="$2" --cancel-label="$3" --button3-label="$4"
+  if [ -n "$4" ]
+  then
+    /jci/tools/jci-dialog --3-button-dialog --title="$TITLE" --text="$1" --ok-label="$2" --cancel-label="$3" --button3-label="$4"
+  else
+    /jci/tools/jci-dialog --question --title="$TITLE" --text="$1" --ok-label="$2" --cancel-label="$3"
+  fi
 }
 
 if ! ask "Create ZIP backup of JCI directory.\nIt may take 20-30 minutes.\nAt least 170 MB of free space is required on the USB drive.\nPress brake pedal every 20 minutes." "Start" "Exit"
