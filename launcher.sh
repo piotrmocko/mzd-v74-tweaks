@@ -1,6 +1,6 @@
 #!/bin/sh
 
-MENU_TITLE="MZD Scripts Launcher"
+TITLE="MZD Scripts Launcher"
 
 SELF=$(readlink -f "$0")
 SELF_NAME=$(basename "$SELF")
@@ -67,7 +67,7 @@ is_known_script() {
 
   case "$1" in
     android-auto.sh|touchscreen.sh|no-more-disclaimer.sh|hud-eu-region.sh|\
-    fuel-consumption.sh|logs-collector.sh|backup-jci.sh|revert-aio.sh)
+    fuel-consumption.sh|logs-collector.sh|backup-jci.sh|revert-aio.sh|run.sh)
       return 0
       ;;
     *)
@@ -116,6 +116,7 @@ while :; do
   then
     confirm "Terminal is not available yet." # TODO: implement terminal
   elif [ $? -eq 2 ]
+  then
     exit 0
   fi
 
@@ -123,6 +124,7 @@ while :; do
   then
     confirm "Built-in MZD Scripts are not available yet." # TODO: implement built-in scripts
   elif [ $? -eq 2 ]
+  then
     exit 0
   fi
 
@@ -130,6 +132,7 @@ while :; do
   then
     reboot
   elif [ $? -eq 2 ]
+  then
     exit 0
   fi
 
