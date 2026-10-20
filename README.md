@@ -6,33 +6,31 @@ A collection of tweaks and modifications for the Mazda infotainment system (CMU 
 
 - **Infotainment System**: MZD Connect (CMU firmware version **74.00.324 only**)
 - **USB Drive**: FAT32 formatted USB flash drive (up to 32 GB)
-- **Input Device**: USB keyboard for terminal access
+- **Input Device**: None for the launcher. A USB keyboard is needed only for the alternative terminal workflow.
 
 ## Installation Instructions
 
-1. **Download and Prepare**
-   - Download latest release ZIP file
-   - Unpack all files directly on a FAT32 formatted USB drive (max 32 GB)
+1. Download the latest release ZIP and unpack its contents directly onto a FAT32-formatted USB drive (up to 32 GB). Do not put the files inside another folder.
+2. Turn the ignition to ACC and wait for MZD to finish loading.
+3. Plug the USB drive into the Mazda USB hub and wait for the launcher dialog to appear.
+4. Choose which available script to run and follow its on-screen prompts. No keyboard is needed for this launcher workflow.
 
-2. **Connect to Vehicle**
-   - Start ACC (Accessory mode) without igniting the engine
-   - Connect the USB drive to the Mazda USB hub
-   - Connect a USB keyboard to the Mazda USB hub
+### Launcher
 
-3. **Launch Terminal**
-   - Navigate to the Entertainment menu
-   - Open USB drive content to play music
-   - Wait for the status window to appear and JCI Test Mode to launch
-   - Wait for a black screen with buttons to appear
-   - Click **NEXT** and then **TERMINAL**
+`run.sh` automatically starts `launcher.sh` when the USB drive is loaded. The launcher displays on-screen dialog window with available scripts one at a time; choose **Open** to run the displayed script, **Next** to skip it, or **Exit** to leave the launcher. It also offers **Start over** after the list is complete.
 
-4. **Execute a Script**
-   - In the terminal, navigate to the USB drive by typing in the command: `cd /tmp/mnt/sda1` or `cd /tmp/mnt/sdb1` and confirm with ENTER key
-   - Optionally, list files to verify contents: `ls`
-   - Run the desired script: `sh NAME_OF_FILE.sh`
-   - Follow the on-screen prompts
-   - Wait 30-120 seconds (or more) for the system to restart
-   - If returned to terminal, review `logs` directory and `exit` or `reboot` to return to MZD
+The launcher includes entries for **Terminal** and **Built-in MZD Scripts**, but those features are not available in the current version. **Reboot** is available from the launcher. Additional `.sh` files placed in the root of the USB drive are also offered after the built-in script entries; select **Open** to run one.
+
+### Alternative: run scripts from Terminal
+
+To open Terminal instead of using the launcher, follow this method:
+
+1. With the USB drive connected, open its contents from the MZD **Entertainment** menu as if starting music playback. This launches the service menu.
+2. Select **Next > Terminal**. A USB keyboard is required for this method.
+3. In Terminal, find the USB mount (usually `/tmp/mnt/sda1` or `/tmp/mnt/sdb1`), then run a script directly, for example `sh fuel-consumption.sh`.
+4. Use the keyboard to inspect terminal output and logs while in the car. Follow the script's prompts.
+
+The launcher is the recommended option for normal use. The terminal method is useful when you need to run a script manually or review its output directly in the car.
 
 ## Available Scripts
 
@@ -50,16 +48,12 @@ A collection of tweaks and modifications for the Mazda infotainment system (CMU 
 **What it does**:
 - Modifies the vehicle settings application to unlock HUD configuration options
 - Allows customization of HUD display preferences
-- Can be installed or uninstalled reversibly
 
-**Installation/Uninstall**:
-- Run the script and choose "Install" or "Uninstall" when prompted
-- Original system files are automatically backed up before modification
-- Logs are saved to `logs/install.log` or `logs/uninstall.log`
-- After reboot navigate to **Settings** > **Active Driving Display** > **Display Information**
+**Configuration**:
+- After reboot navigate to **Settings** > **Active Driving Display** > **Display Information** to change **Street Information**
 
 **Issues**:
-- *Street Information* menu is grayed out - your HUD doesn't support displaying road name
+- **Street Information** menu is grayed out - your HUD doesn't support displaying road name
 
 ### 2. `no-more-disclaimer.sh` - No More Disclaimer Mod
 **Purpose**: Removes entirely the disclaimer/warning screen that appears on the system startup. With the stock behavior it disappears in 3.5 seconds.
@@ -69,12 +63,6 @@ A collection of tweaks and modifications for the Mazda infotainment system (CMU 
 **What it does**:
 - Modifies the system application to skip disclaimer prompts
 - Provides a cleaner boot experience without interruptions
-- Can be installed or uninstalled reversibly
-
-**Installation/Uninstall**:
-- Run the script and choose "Install" or "Uninstall" when prompted
-- Original system files are automatically backed up before modification
-- Logs are saved to `logs/install.log` or `logs/uninstall.log`
 
 ### 3. `fuel-consumption.sh` - Fuel Consumption Tweaks
 **Purpose**: Three tweaks for the Fuel Consumption app. Each one can be installed, uninstalled or skipped on its own:
@@ -93,17 +81,21 @@ A collection of tweaks and modifications for the Mazda infotainment system (CMU 
 | Fuel Consumption screen | ![stock](images/fuel-bar-values-stock.jpg) | ![tweak](images/fuel-bar-values-tweak.jpg) |
 | At ignition off (i-stop car) | ![stock](images/fuel-ending-stock.jpg) | ![tweak](images/fuel-ending-tweak.jpg) |
 
-**Running**:
-- Run `sh fuel-consumption.sh`. First answer **Continue** or **Exit** (Exit changes nothing).
-- For each tweak, choose **Continue** or **Skip**, then **Install** or **Uninstall**, then **OK** (or **Exit** to skip the remaining tweaks).
-- The system reboots at the end, but only if something was changed.
-- Everything is checked with md5 before any change: the script itself (`fuel-consumption.sh.md5`), every file it brings (`*.md5`), and the exact original on the head unit. Backups: `<file>.org` and `/jci/sm/*.fuelend-orig`. On an error, that tweak is restored.
-- While it runs, the script renames `mp3/` to `mp3_off/` on the USB drive, so the head unit does not jump back to the JCI Test Mode after you leave the terminal. It renames it back at the end. Only if a restore failed ("Do NOT reboot") does it stay `mp3_off`: then rename it back to `mp3` on your PC before the next run.
-- At the end, remove the USB drive. If nothing was changed, type `exit` to leave the terminal (the HOME button does not work there).
-- Log: `logs/fuel-consumption.log`.
-- Details, checksums, how to rebuild the shim or re-create the JS files: [docs/fuel-consumption.md](docs/fuel-consumption.md).
+**Documentation**:
+- Details of the fuel consumption tweaks: [docs/fuel-consumption.md](docs/fuel-consumption.md).
 
-### 4. `backup-jci.sh` - JCI Full System Backup
+### 4. `logs-collector.sh` - Running Logs Collector
+**Purpose**: Copies the CMU's `/var/log/running_log` files to the USB drive or changes their rotation size.
+
+**Running**:
+- Choose **Copy logs** to save the current running logs under `logs/` on the USB drive. Each collection is saved in its own numbered folder.
+- Choose **Change size** and then **Enlarged 5MB** to increase the running log rotation size. This can help collect more logs when using an OEM AA Mods debug release. The CMU must reboot for the new size to take effect.
+- To preserve diagnostic output, run **Copy logs before turning off the ignition**. Turning the ignition off first can cause the running logs you want to collect to be lost.
+
+### 5. `touchscreen.sh` - Touchscreen Enabled Tweak
+**Purpose**: Enables touchscreen input while the vehicle is moving.
+
+### 6. `backup-jci.sh` - JCI Full System Backup
 **Purpose**: Creates a complete backup of the JCI system directory.
 
 **What it does**:
@@ -114,11 +106,10 @@ A collection of tweaks and modifications for the Mazda infotainment system (CMU 
 - At least 170 MB of free space on USB drive
 
 **Output**:
-- Backup file: `JCI-[VERSION].zip`
-- Log file: `logs/backup.log`
+- Backup file: `backup/JCI-[VERSION].zip`
 - Use this backup to restore your system to a known-good state
 
-### 5. `revert-aio.sh` - Uninstall AIO base Tweaks only
+### 7. `revert-aio.sh` - Uninstall AIO base Tweaks only
 **Purpose**: Removes previously installed base modifications of AIO (All-In-One) Tweaks from your system. It doesn't remove the targeted mods. Remove them with AIO scripts.
 
 **What it does**:
@@ -129,47 +120,35 @@ A collection of tweaks and modifications for the Mazda infotainment system (CMU 
 - Verifies file integrity before completion
 - Logs all operations for troubleshooting
 
-**Running**:
-- Run the script and confirm when prompted
-- System will reboot automatically upon completion
-- Check `logs/uninstall.log` if errors occur
-
 ## File Structure
 
 ```
 mzd-v74-tweaks/
-├── README.md                          # This file
-├── hud-eu-region.sh                   # HUD settings modification script
-├── no-more-disclaimer.sh              # Disclaimer removal script
+├── README.md
+├── run.sh                             # Starts the launcher
+├── launcher.sh                        # Offers scripts and launcher actions
 ├── fuel-consumption.sh                # Fuel Consumption tweaks
-├── backup-jci.sh                      # System backup script
-├── revert-aio.sh                      # AIO tweaks uninstaller
+├── hud-eu-region.sh                   # HUD Street Info region tweak
+├── no-more-disclaimer.sh              # Disclaimer removal tweak
+├── touchscreen.sh                     # Touchscreen tweak
+├── logs-collector.sh                  # Copy running logs / change rotation size
+├── backup-jci.sh                      # Back up /jci to a ZIP on the USB drive
+├── revert-aio.sh                      # Remove AIO base tweaks
+├── autorun/                           # USB autorun files for the CMU
+├── *.md5                              # Checksums for protected scripts and payload files
+├── .github/workflows/                 # CI, Build, and Release workflows
 ├── jci-mods/                          # Modified application files
-│   ├── vehsettingsApp.js              # Modified vehicle settings app
-│   ├── systemApp.js                   # Modified system app
-│   ├── ecoenergyApp.js                # Modified Fuel Consumption app
-│   └── FuelConsumptionCtrl.js         # Modified Fuel Consumption graphs
-├── jci-org/                           # Original backup files
-│   ├── vehsettingsApp.js.org          # Original vehicle settings app
-│   ├── systemApp.js.org               # Original system app
-│   ├── ecoenergyApp.js.org            # Original Fuel Consumption app
-│   └── FuelConsumptionCtrl.js.org     # Original Fuel Consumption graphs
-├── jci-patches/                       # Scripts that create jci-mods files from jci-org
-├── jci-shims/                         # Prebuilt shims, updated by the Build workflow
-│   └── fuel_ending_mmui.so            # LD_PRELOAD shim for jciMMUI
-├── mazda/
-│   ├── m3-toolchain/                  # Cross toolchain (git submodule, Git LFS)
-│   └── patches/fuel_ending_mmui/      # Shim source
-├── build/build.sh                     # Builds mazda/patches/* into jci-shims/
-├── docs/                              # Details, build and patch instructions
-├── tests/                             # CI tests: installer in busybox, shims in qemu-arm
-├── images/                            # Screenshosts for documentation
-├── *.md5                              # MD5 checksums
+├── jci-org/                           # Original application files
+├── jci-patches/                       # Rebuild modified JS files from originals
+├── jci-shims/                         # Prebuilt ARM shims and checksums
+├── mazda/                             # Toolchain submodule and shim source code
+├── build/                             # Shim build and checksum tools
+├── docs/                              # Additional technical documentation
+├── tests/                             # Installer and shim tests
+├── images/                            # README screenshots
 ├── js/                                # JavaScript utility files
-│   └── run.js                         # Execution script
-├── mp3/                               # Audio files for testing
-|   └── a.mp3, b.mp3, c.mp3, d.mp3     # Audio test files
-└── mp3title.txt                       # Metadata for audio loading
+├── mp3/                               # USB audio files used by the autorun setup
+└── mp3title.txt                       # Audio metadata
 ```
 
 ## Common Issues & Troubleshooting
@@ -203,7 +182,7 @@ mzd-v74-tweaks/
 3. Original system files are backed up with `.org` extension
 4. Modified files are copied to system directories
 5. File integrity is verified after copying
-6. System automatically reboots to apply changes
+6. System offers reboot to apply changes
 
 ## Support & Debugging
 
