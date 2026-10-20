@@ -1,10 +1,12 @@
 #!/bin/sh
 
+TITLE="AIO Tweaks Uninstaller"
+
 /jci/tools/jci-dialog --question \
-  --title="AIO Tweaks" \
+  --title="$TITLE" \
   --text="Would you like to uninstall AIO Tweaks?" \
   --ok-label="Uninstall" \
-  --cancel-label="Cancel"
+  --cancel-label="Exit"
 CHOICE=$?
 
 if [ "${CHOICE}" -ne 0 ]
@@ -14,16 +16,27 @@ fi
 
 hwclock --hctosys
 
+SELF=$(readlink -f "$0")
+SELF_NAME=$(basename "$SELF")
+MYDIR=$(dirname "$SELF")
+
+# Make the USB drive writable: find its mount point (also works from a subfolder).
+MP="$MYDIR"
+while [ "$MP" != "/" ] && ! grep -q " $MP " /proc/mounts; do MP=$(dirname "$MP"); done
+mount -o rw,remount "$MP"
+
 echo 1 > /sys/class/gpio/Watchdog\ Disable/value
 mount -o rw,remount /
 
-MYDIR=$(dirname "$(readlink -f "$0")")
-mount -o rw,remount "${MYDIR}"
 mkdir -p "${MYDIR}/logs"
-exec > "${MYDIR}/logs/uninstall.log" 2>&1
+LOG_FILE="${SELF_NAME%.sh}.log"
+LOG="${MYDIR}/logs/${LOG_FILE}"
 
-echo "=== AIO Tweaks uninstall start ==="
-/jci/tools/jci-dialog --info --title="AIO Tweaks" \
+exec > "$LOG" 2>&1
+echo "=== ${TITLE} start ==="
+date
+
+/jci/tools/jci-dialog --info --title="$TITLE" \
   --text="Uninstalling AIO Tweaks...\nDo not remove USB drive." --no-cancel &
 
 RESTORE_FAILED=0
@@ -93,24 +106,20 @@ else
 fi
 
 sync
-if [ "${RESTORE_FAILED}" -eq 0 ]
-then
-  echo "=== AIO Tweaks uninstall complete ==="
-else
-  echo "=== AIO Tweaks uninstall completed with errors ==="
-fi
+echo "=== $TITLE complete ==="
 
 killall -q jci-dialog
 if [ "${RESTORE_FAILED}" -eq 0 ]
 then
-  /jci/tools/jci-dialog --info --title="AIO Tweaks" \
-    --text="Uninstall complete!\nYou can remove the USB drive.\nRebooting in 5 seconds..." --no-cancel &
-  sleep 5
-  killall -q jci-dialog
-  reboot
+  if /jci/tools/jci-dialog --question --title="$TITLE" \
+    --text="Uninstall complete!\nRemove the USB drive and reboot." \
+    --ok-label="Reboot now" --cancel-label="Reboot later"
+  then
+    reboot
+  fi
 else
-  /jci/tools/jci-dialog --info --title="AIO Tweaks" \
-    --text="Uninstall encountered errors.\nDo not remove the USB drive.\nReview logs/uninstall.log." --no-cancel &
+  /jci/tools/jci-dialog --info --title="$TITLE" \
+    --text="Uninstall encountered errors.\nDo not remove the USB drive.\nReview logs/${LOG_FILE}." --no-cancel
 fi
 
 exit "${RESTORE_FAILED}"
