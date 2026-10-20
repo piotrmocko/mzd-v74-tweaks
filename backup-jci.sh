@@ -1,36 +1,68 @@
 #!/bin/sh
 
-/jci/tools/jci-dialog --question \
-  --title="JCI Backup" \
-  --text="Create a full ZIP backup of JCI directory.\nAt least 170 MB of free space is required on the USB drive." \
-  --ok-label="Start" \
-  --cancel-label="Cancel"
-CHOICE=$?
+TITLE="JCI Backup"
 
-if [ "${CHOICE}" -ne 0 ]
+dialog_kill() { killall -q jci-dialog; }
+
+# Non-blocking status message.
+info() {
+  dialog_kill
+  /jci/tools/jci-dialog --info --title="$TITLE" --text="$1" --no-cancel &
+}
+
+# Blocking status message.
+confirm() {
+  dialog_kill
+  /jci/tools/jci-dialog --info --title="$TITLE" --text="$1" --no-cancel
+}
+
+# Blocking question; returns 0 for the OK button, non-zero otherwise.
+ask() {
+  dialog_kill
+  # Display a 3-button dialog if a third button label is provided.
+  [ -z "$4" ] && /jci/tools/jci-dialog --question --title="$TITLE" --text="$1" --ok-label="$2" --cancel-label="$3"
+  [ -n "$4" ] && /jci/tools/jci-dialog --3-button-dialog --title="$TITLE" --text="$1" --ok-label="$2" --cancel-label="$3" --button3-label="$4"
+}
+
+if ! ask "Create ZIP backup of JCI directory.\nIt may take 20-30 minutes.\nAt least 170 MB of free space is required on the USB drive.\nPress brake pedal every 20 minutes." "Start" "Exit"
 then
   exit 0
 fi
 
+hwclock --hctosys
+
 MYDIR=$(dirname "$(readlink -f "$0")")
+SELF=$(readlink -f "$0")
+SELF_NAME=$(basename "$SELF")
+
+# Make the USB drive writable: find its mount point (also works from a subfolder).
+MP="$MYDIR"
+while [ "$MP" != "/" ] && ! grep -q " $MP " /proc/mounts; do MP=$(dirname "$MP"); done
+mount -o rw,remount "$MP"
+
+echo 1 > /sys/class/gpio/Watchdog\ Disable/value
+mount -o rw,remount /
+
+mkdir -p "${MYDIR}/logs"
+LOG_FILE="${SELF_NAME%.sh}.log"
+LOG="${MYDIR}/logs/${LOG_FILE}"
+
+exec > "$LOG" 2>&1
+echo "=== ${TITLE} start ==="
+date
 
 show_error()
 {
   MESSAGE=$1
   echo "ERROR: ${MESSAGE}" >&2
-  killall -q jci-dialog
-  /jci/tools/jci-dialog --info --title="JCI Backup" --text="${MESSAGE}"
+  confirm "${MESSAGE}"
 }
 
 confirm_without_space_check()
 {
   MESSAGE=$1
   echo "WARNING: ${MESSAGE}" >&2
-  /jci/tools/jci-dialog --question \
-    --title="JCI Backup" \
-    --text="${MESSAGE}\nFree space cannot be verified. Continue anyway?" \
-    --ok-label="OK" \
-    --cancel-label="Cancel"
+  ask "${MESSAGE}\nFree space cannot be verified. Continue anyway?" "OK" "Cancel"
 }
 
 DF_OUTPUT=$(df -Pk "${MYDIR}" 2>&1)
@@ -90,26 +122,12 @@ then
   exit 1
 fi
 
-if ! mkdir -p "${MYDIR}/logs"
-then
-  show_error "Unable to create the backup log directory on the USB drive."
-  exit 1
-fi
-
-if ! touch "${MYDIR}/logs/backup.log"
-then
-  show_error "Unable to write to the USB drive."
-  exit 1
-fi
-exec > "${MYDIR}/logs/backup.log" 2>&1
-
 BACKUPZIP="${MYDIR}/JCI-${CMU_SW_VER}.zip"
 ZIP_TMP="${BACKUPZIP}.tmp.$$"
 
-echo "=== JCI backup start ==="
+echo "=== ${TITLE} start ==="
 echo "Creating ${BACKUPZIP}"
-/jci/tools/jci-dialog --info --title="JCI Backup" \
-  --text="Creating a full ZIP backup of JCI...\nDo not remove the USB drive." --no-cancel &
+info "Creating ZIP backup of JCI directory...\nIt may take 20-30 minutes.\nDo not remove the USB drive.\nPress brake pedal every 20 minutes."
 
 zip -r "${ZIP_TMP}" /jci
 ZIP_STATUS=$?
@@ -117,9 +135,7 @@ if [ "${ZIP_STATUS}" -ne 0 ]
 then
   rm -f "${ZIP_TMP}"
   echo "ERROR: ZIP creation failed with status ${ZIP_STATUS}"
-  killall -q jci-dialog
-  /jci/tools/jci-dialog --info --title="JCI Backup" \
-    --text="JCI backup failed.\nCheck logs/backup.log before removing the USB drive."
+  show_error "JCI backup failed.\nCheck logs/${LOG_FILE} before removing the USB drive."
   exit 1
 fi
 
@@ -127,15 +143,12 @@ if ! mv -f "${ZIP_TMP}" "${BACKUPZIP}"
 then
   rm -f "${ZIP_TMP}"
   echo "ERROR: Failed to save ${BACKUPZIP}"
-  killall -q jci-dialog
-  /jci/tools/jci-dialog --info --title="JCI Backup" \
-    --text="JCI backup failed while saving the ZIP file.\nCheck logs/backup.log before removing the USB drive."
+  show_error "JCI backup failed while saving the ZIP file.\nCheck logs/${LOG_FILE} before removing the USB drive."
   exit 1
 fi
 
 sync
 echo "=== JCI backup complete ==="
 killall -q jci-dialog
-/jci/tools/jci-dialog --info --title="JCI Backup" \
-  --text="JCI backup completed successfully.\nYou can remove the USB drive."
+confirm "JCI backup saved successfully to the USB drive."
 exit 0
