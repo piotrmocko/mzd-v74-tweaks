@@ -5,9 +5,9 @@ TITLE="No More Disclaimer Tweak"
 
 hwclock --hctosys
 
-MYDIR=$(dirname "$(readlink -f "$0")")
 SELF=$(readlink -f "$0")
 SELF_NAME=$(basename "$SELF")
+MYDIR=$(dirname "$SELF")
 
 # Make the USB drive writable: find its mount point (also works from a subfolder).
 MP="$MYDIR"
@@ -21,24 +21,6 @@ LOG="${MYDIR}/logs/${LOG_FILE}"
 exec > "$LOG" 2>&1
 echo "=== ${TITLE} start ==="
 date
-
-# Rename the mp3 folder while the script runs, so the head unit does not jump back to
-# the JCI test mode after HOME. It is renamed back at the end (the USB drive is removed
-# then), except after a failed restore: then the drive stays in the head unit for the
-# logs, and mp3_off keeps it out of the test mode. Rename it back on your PC then.
-if [ -d "${MP}/mp3" ]
-then
-  mv "${MP}/mp3" "${MP}/mp3_off" && sync
-  echo "renamed ${MP}/mp3 -> mp3_off"
-fi
-mp3_back() {
-  if [ -d "${MP}/mp3_off" ] && [ ! -e "${MP}/mp3" ]
-  then
-    mv "${MP}/mp3_off" "${MP}/mp3"
-    echo "renamed ${MP}/mp3_off -> mp3"
-  fi
-  sync
-}
 
 md5_of() { md5sum "$1" 2>/dev/null | cut -d' ' -f1; }
 md5_from() { cut -c1-32 "$1" 2>/dev/null; }
@@ -60,7 +42,9 @@ confirm() {
 # Blocking question; returns 0 for the OK button, non-zero otherwise.
 ask() {
   dialog_kill
-  /jci/tools/jci-dialog --question --title="$TITLE" --text="$1" --ok-label="$2" --cancel-label="$3"
+  # Display a 3-button dialog if a third button label is provided.
+  [ -z "$4" ] && /jci/tools/jci-dialog --question --title="$TITLE" --text="$1" --ok-label="$2" --cancel-label="$3"
+  [ -n "$4" ] && /jci/tools/jci-dialog --3-button-dialog --title="$TITLE" --text="$1" --ok-label="$2" --cancel-label="$3" --button3-label="$4"
 }
 
 # --- Integrity of this script ---
@@ -68,10 +52,8 @@ _want=$(md5_from "${SELF}.md5")
 if [ -z "$_want" ] || [ "$_want" != "$(md5_of "$SELF")" ]
 then
   echo "ERROR: md5 of ${SELF_NAME} does not match ${SELF_NAME}.md5"
-  mp3_back
-  info "The installer on the USB drive is damaged (md5).\nNOTHING was changed.\nCopy it again."
-  sleep 15
-  dialog_kill
+  sync
+  confirm "The installer on the USB drive is damaged (md5).\nNOTHING was changed.\nCopy it again."
   exit 1
 fi
 echo "md5 OK   ${SELF_NAME}"
@@ -81,20 +63,9 @@ CMU_VER=$(grep '^JCI_SW_VER=' /jci/version.ini | grep -oE '[0-9]+\.[0-9]+\.[0-9]
 echo "CMU version: ${CMU_VER}"
 if [ "${CMU_VER}" != "74.00.324" ]
 then
-  mp3_back
-  info "This installer only supports CMU firmware V74.00.324.\nDetected version: ${CMU_VER}\nNOTHING was changed."
-  sleep 15
-  dialog_kill
+  sync
+  confirm "This installer only supports CMU firmware V74.00.324.\nDetected version: ${CMU_VER}\nNOTHING was changed."
   exit 1
-fi
-
-# --- Safety question: if started by accident, nothing changes ---
-if ! ask "Would you like to continue?" "Continue" "Exit"
-then
-  echo "exit requested by the user"
-  mp3_back
-  dialog_kill
-  exit 0
 fi
 
 CHANGED=0
@@ -216,11 +187,16 @@ js_uninstall() {
 # Installation/Uninstallation
 # ======================================================================
 RESULT=""
-if ask "What would you like to do?" "Install" "Uninstall"
+if ask "What would you like to do?" "Install" "Uninstall" "Exit"
 then
-  js_install "No More Disclaimer" /jci/gui/apps/system/js/systemApp.js systemApp.js
+  js_install "$TITLE" /jci/gui/apps/system/js/systemApp.js systemApp.js
+elif [ $? -eq 1 ]
+then
+  js_uninstall "$TITLE" /jci/gui/apps/system/js/systemApp.js systemApp.js
 else
-  js_uninstall "No More Disclaimer" /jci/gui/apps/system/js/systemApp.js systemApp.js
+  echo "Exit requested by the user"
+  echo "=== ${TITLE} complete ==="
+  exit 0
 fi
 if [ $? -ne 0 ]; then
   echo "ERROR: $(echo "$RESULT" | sed 's/\\n/ /g')"
@@ -233,28 +209,16 @@ confirm "$RESULT"
 # ======================================================================
 # Reboot (only if something was changed)
 # ======================================================================
-sync
+echo "=== ${TITLE} complete ==="
 if [ "$FATAL" = "1" ]
 then
-  echo "=== ${TITLE} STOPPED after a failed restore, no reboot ==="
-  sync
-  info "A restore failed.\nDo NOT reboot, check logs/${LOG_FILE}.\nThe mp3 folder on the USB drive is now mp3_off."
-  sleep 15
-  dialog_kill
   exit 1
 elif [ "$CHANGED" = "1" ]
 then
-  echo "=== ${TITLE} complete, rebooting ==="
-  mp3_back
-  info "Done.\nRemove the USB drive.\nRebooting in 15 seconds..."
-  sleep 15
-  dialog_kill
-  reboot
-else
-  echo "=== ${TITLE} complete, nothing changed ==="
-  mp3_back
-  info "Nothing was changed.\nRemove the USB drive.\nThen type exit to leave the terminal."
-  sleep 15
-  dialog_kill
+  sync
+  if ask "Remove the USB drive and reboot." "Reboot now" "Reboot later"
+  then
+    reboot
+  fi
 fi
 exit 0
