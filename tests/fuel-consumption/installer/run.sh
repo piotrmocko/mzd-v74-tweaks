@@ -44,13 +44,19 @@ if [ "${FAIL_RESTORE:-0}" = "1" ]; then
 fi
 exec /bin/cp "$@"
 EOF
-# jci-dialog: answers --question from /tmp/ans (0 = OK/Continue/Install, 1 = Exit/Skip/Uninstall)
+# jci-dialog: answers --question and --3-button-dialog from /tmp/ans (one number per
+# question: 0 = first button, 1 = second, 2 = third). --info dialogs return 0. Out of
+# answers: the last button (Skip/Exit/Reboot later), so a test never installs by accident.
 cat > /jci/tools/jci-dialog <<'EOF'
 #!/bin/sh
-case "$*" in *--question*) ;; *) exit 0;; esac
+case "$*" in
+  *--3-button-dialog*) last=2;;
+  *--question*) last=1;;
+  *) exit 0;;
+esac
 set -- $(cat /tmp/ans)
 a=${1:-none}; [ $# -gt 0 ] && shift; echo "$*" > /tmp/ans
-[ "$a" = "none" ] && { echo "[dialog] out of answers" >> /tmp/events; exit 1; }
+[ "$a" = "none" ] && { echo "[dialog] out of answers" >> /tmp/events; exit "$last"; }
 exit "$a"
 EOF
 chmod +x /stub/* /jci/tools/jci-dialog
@@ -67,7 +73,7 @@ WCP=$(m5 "$T/sm_WCP.conf")
 
 reset() {
   rm -rf /usb/* /data_persist/fuel-ending /jci/sm/* "$ECO".org "$FCC".org
-  mkdir -p /usb/mp3
+  mkdir -p /usb/mp3   # the installer must leave it alone
   cp -r "$REPO/jci-mods" "$REPO/jci-org" "$REPO/jci-shims" /usb/
   cat "$REPO/jci-org/ecoenergyApp.js.org" > "$ECO"
   cat "$REPO/jci-org/FuelConsumptionCtrl.js.org" > "$FCC"
@@ -90,7 +96,6 @@ run() {
   echo "$1" > /tmp/ans
   : > /tmp/events
   rm -rf /usb/logs
-  [ -d /usb/mp3_off ] && [ ! -e /usb/mp3 ] && mv /usb/mp3_off /usb/mp3
   sh /usb/fuel-consumption.sh
   LOG=/usb/logs/fuel-consumption.log
 }
@@ -101,7 +106,9 @@ is()   { [ "$2" = "$3" ] && ok || fail "$1: expected '$3', got '$2'"; }
 logged()     { grep -q "$1" "$LOG" && ok || fail "log should contain: $1"; }
 not_logged() { grep -q "$1" "$LOG" && fail "log should not contain: $1" || ok; }
 rebooted()   { is "reboot" "$(grep -c 'stub\] reboot' /tmp/events)" "$1"; }
-mp3_is()     { [ -d "/usb/$1" ] && ok || fail "USB drive should have $1/"; }
+mp3_kept()   { [ -d /usb/mp3 ] && [ ! -e /usb/mp3_off ] && ok || fail "the mp3 folder must not be touched"; }
+not_in_events() { grep -q "$1" /tmp/events && fail "unexpected event: $1" || ok; }
+answers_used()  { is "unused answers" "$(cat /tmp/ans)" ""; not_in_events "out of answers"; }
 shim_lines() { echo "$(grep -c fuel_ending_mmui /jci/sm/sm.conf)/$(grep -c fuel_ending_mmui /jci/sm/sm_WCP.conf)"; }
 after_mmui() { grep -A1 'name="jciMMUI"' "/jci/sm/$1" | tail -n 1 | grep -c fuel_ending_mmui; }
 js_state()   { is "ecoenergyApp.js" "$(m5 $ECO)" "$1"; is "FuelConsumptionCtrl.js" "$(m5 $FCC)" "$2"; }
@@ -116,50 +123,54 @@ shim_on() {
 }
 case_() { echo "### $*"; }
 
-# Answers: 1st = Continue/Exit; per tweak: Continue/Skip, Install/Uninstall, OK/Exit.
-ALL_INSTALL="0 0 0 0 0 0 0 0 0 0"
-ALL_UNINSTALL="0 0 1 0 0 1 0 0 1 0"
-SHIM_INSTALL="0 1 1 0 0 0"
-SHIM_UNINSTALL="0 1 1 0 1 0"
+# Answers, in order: per tweak Install/Uninstall/Skip (0/1/2), then OK/Exit (0/1) after a
+# step that ran; at the end Reboot now/Reboot later (0/1), only if something was changed.
+ALL_INSTALL="0 0 0 0 0 0 0"
+ALL_UNINSTALL="1 0 1 0 1 0 0"
+SHIM_INSTALL="2 2 0 0 0"
+SHIM_UNINSTALL="2 2 1 0 0"
+NOTHING_INSTALL="0 0 0 0 0 0"     # every step ran, nothing changed: no reboot question
+NOTHING_UNINSTALL="1 0 1 0 1 0"
 
-case_ "A) install all three"; reset; run "$ALL_INSTALL"
+case_ "A) install all three, reboot now"; reset; run "$ALL_INSTALL"
 js_state "$MOD_ECO" "$MOD_FCC"; shim_on
 is ".org backups" "$(m5 $ECO.org)/$(m5 $FCC.org)" "$ORG_ECO/$ORG_FCC"
 is "sm.conf backup" "$(m5 /jci/sm/sm.conf.fuelend-orig)" "$SM"
 is "sm_WCP.conf backup" "$(m5 /jci/sm/sm_WCP.conf.fuelend-orig)" "$WCP"
 is "permissions kept" "$(ls -l $ECO | cut -c1-10)" "-rwxr-xr-x"
-rebooted 1; mp3_is mp3; logged "renamed /usb/mp3 -> mp3_off"; logged "renamed /usb/mp3_off -> mp3"
+rebooted 1; answers_used; mp3_kept
 
-case_ "B) install again -> already installed, no reboot"; run "$ALL_INSTALL"
-js_state "$MOD_ECO" "$MOD_FCC"; shim_on; rebooted 0; mp3_is mp3; logged "nothing changed"
+case_ "B) install again -> already installed, no reboot question"; run "$NOTHING_INSTALL"
+js_state "$MOD_ECO" "$MOD_FCC"; shim_on; rebooted 0; answers_used; logged "nothing changed"
 
-case_ "C) uninstall all three"; run "$ALL_UNINSTALL"
+case_ "C) uninstall all three, reboot now"; run "$ALL_UNINSTALL"
 js_state "$ORG_ECO" "$ORG_FCC"; shim_off; confs_are "$SM" "$WCP"; no_conf_backups
 [ -e "$ECO.org" ] || [ -e "$FCC.org" ] && fail ".org backups should be removed" || ok
 [ -d /data_persist/fuel-ending ] && fail "shim folder should be removed" || ok
-rebooted 1
+rebooted 1; answers_used
 
-case_ "D) uninstall again -> not installed, no reboot"; run "$ALL_UNINSTALL"
-js_state "$ORG_ECO" "$ORG_FCC"; shim_off; rebooted 0
+case_ "D) uninstall again -> not installed, no reboot question"; run "$NOTHING_UNINSTALL"
+js_state "$ORG_ECO" "$ORG_FCC"; shim_off; rebooted 0; answers_used
 
-case_ "E) Exit at the safety question"; reset; run "1"
-js_state "$ORG_ECO" "$ORG_FCC"; confs_are "$SM" "$WCP"; rebooted 0; mp3_is mp3; logged "exit requested"
+case_ "E) install all three, reboot later -> installed, no reboot"; reset; run "0 0 0 0 0 0 1"
+js_state "$MOD_ECO" "$MOD_FCC"; shim_on; rebooted 0; answers_used; logged "complete, rebooting"
 
-case_ "F) skip all"; reset; run "0 1 1 1"
-js_state "$ORG_ECO" "$ORG_FCC"; confs_are "$SM" "$WCP"; rebooted 0; is "skipped" "$(grep -c skipped $LOG)" "3"
+case_ "F) skip all"; reset; run "2 2 2"
+js_state "$ORG_ECO" "$ORG_FCC"; confs_are "$SM" "$WCP"; rebooted 0; answers_used
+is "skipped" "$(grep -c skipped $LOG)" "3"; logged "nothing changed"; mp3_kept
 
 case_ "G) damaged installer"; reset; echo "#" >> /usb/fuel-consumption.sh; run ""
-js_state "$ORG_ECO" "$ORG_FCC"; confs_are "$SM" "$WCP"; rebooted 0; mp3_is mp3; logged "ERROR: md5 of fuel-consumption.sh"
+js_state "$ORG_ECO" "$ORG_FCC"; confs_are "$SM" "$WCP"; rebooted 0; mp3_kept; logged "ERROR: md5 of fuel-consumption.sh"
 
 case_ "H) other firmware"; reset; echo 'JCI_SW_VER="MAZ_CMU-150_70.00.100"' > /jci/version.ini; run ""
-js_state "$ORG_ECO" "$ORG_FCC"; rebooted 0; mp3_is mp3; logged "CMU version: 70.00.100"
+js_state "$ORG_ECO" "$ORG_FCC"; rebooted 0; logged "CMU version: 70.00.100"
 
-case_ "I) bar values installed, then Exit -> the rest is skipped"; reset; run "0 0 0 1"
-js_state "$ORG_ECO" "$MOD_FCC"; confs_are "$SM" "$WCP"; rebooted 1; logged "remaining steps skipped"
+case_ "I) bar values installed, then Exit -> the rest is skipped, reboot now"; reset; run "0 1 0"
+js_state "$ORG_ECO" "$MOD_FCC"; confs_are "$SM" "$WCP"; rebooted 1; answers_used; logged "remaining steps skipped"
 
 case_ "J) damaged jci-mods/FuelConsumptionCtrl.js -> that step fails, the rest is installed"; reset
 echo x >> /usb/jci-mods/FuelConsumptionCtrl.js; run "$ALL_INSTALL"
-js_state "$MOD_ECO" "$ORG_FCC"; shim_on; rebooted 1; logged "ERROR: Bar values"
+js_state "$MOD_ECO" "$ORG_FCC"; shim_on; rebooted 1; answers_used; logged "ERROR: Bar values"
 
 case_ "K) unknown ecoenergyApp.js on the head unit -> left alone"; reset; echo "//x" >> "$ECO"; K=$(m5 $ECO)
 run "$ALL_INSTALL"
@@ -193,18 +204,21 @@ is "sm_WCP.conf backup" "$(m5 /jci/sm/sm_WCP.conf.fuelend-orig)" "$WCP"
 case_ "R) editing sm_WCP.conf fails -> both confs back to the state before THIS run, copies removed"; reset
 echo "old copy" > /jci/sm/sm.conf.fuelend-orig; echo "old copy" > /jci/sm/sm_WCP.conf.fuelend-orig
 export FAIL_SED=1; run "$SHIM_INSTALL"; unset FAIL_SED
-shim_off; confs_are "$SM" "$WCP"; no_conf_backups; rebooted 0; mp3_is mp3
+shim_off; confs_are "$SM" "$WCP"; no_conf_backups; rebooted 0
 logged "restore sm.conf: OK"; logged "Everything was restored"; not_logged "STOPPED"
 
-case_ "S) editing fails AND restoring sm.conf fails -> stop, no reboot, mp3_off kept, its copy kept"; reset
+case_ "S) editing fails AND restoring sm.conf fails -> stop, no reboot question, its copy kept"; reset
 export FAIL_SED=1 FAIL_RESTORE=1; run "$SHIM_INSTALL"; unset FAIL_SED FAIL_RESTORE
-rebooted 0; mp3_is mp3_off; logged "STOPPED"; logged "copy kept"
+rebooted 0; mp3_kept; logged "STOPPED"; logged "copy kept"
 is "sm.conf copy kept" "$(m5 /jci/sm/sm.conf.fuelend-orig)" "$SM"
 # sm_WCP.conf was not edited (the edit failed), so it is unchanged and its copy is removed
 is "sm_WCP.conf" "$(m5 /jci/sm/sm_WCP.conf)" "$WCP"
 
-case_ "T) uninstall when it is not installed -> nothing changes"; reset; run "0 0 1 0 1 1"
-js_state "$ORG_ECO" "$ORG_FCC"; rebooted 0; logged "not installed"
+case_ "T) uninstall when it is not installed -> nothing changes"; reset; run "$NOTHING_UNINSTALL"
+js_state "$ORG_ECO" "$ORG_FCC"; rebooted 0; answers_used; logged "not installed"
+
+case_ "U) the dialog gives no answer -> every step is skipped"; reset; run ""
+js_state "$ORG_ECO" "$ORG_FCC"; confs_are "$SM" "$WCP"; rebooted 0; is "skipped" "$(grep -c skipped $LOG)" "3"
 
 echo
 echo "$CHECKS checks, $FAILS failed"
