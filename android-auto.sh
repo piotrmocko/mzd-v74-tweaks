@@ -122,6 +122,82 @@ patch_service() {
   return 0
 }
 
+BUS_SVC="unix:path=/tmp/dbus_service_socket"
+BUS_HMI="unix:path=/tmp/dbus_hmi_socket"
+TRIES=5
+RETRY_SLEEP=${RETRY_SLEEP:-2}
+
+# vbs_get <control type>: prints the value (0..254), or nothing if unavailable.
+vbs_get()
+{
+  _t=$1
+  _n=0
+  while [ ${_n} -lt ${TRIES} ]
+  do
+    for _bus in "${BUS_SVC}" "${BUS_HMI}"
+    do
+      _reply=$(dbus-send --address="${_bus}" --print-reply --reply-timeout=2000 \
+        --dest=com.jci.vbs.settings /com/jci/vbs/settings \
+        com.jci.vbs.settings.GetCMUControlReq byte:${_t} uint32:0 2>&1)
+      echo "type ${_t} via ${_bus}: $(echo "${_reply}" | tr '\n' ' ')" >&2
+      # The first byte in the reply is the requested control value.
+      _v=$(echo "${_reply}" | awk '$1=="byte"{print $2; exit}')
+      if [ -n "${_v}" ] && [ "${_v}" != "255" ]
+      then
+        echo "${_v}"
+        return 0
+      fi
+    done
+    _n=$((_n + 1))
+    [ ${_n} -lt ${TRIES} ] && sleep ${RETRY_SLEEP}
+  done
+  return 1
+}
+
+HUD_INFO=""
+check_hud() {
+  HUD_EQUIP=$(vbs_get 13)
+  HUD_TYPE=""
+  [ "${HUD_EQUIP}" = "1" ] && HUD_TYPE=$(vbs_get 26)
+  echo "HUD result: equip='${HUD_EQUIP}' type='${HUD_TYPE}'" >&2
+
+  if [ "${HUD_EQUIP}" = "1" ]
+  then
+    case "${HUD_TYPE}" in
+      2)
+        # WHUD_color
+        HUD_INFO="Detected supported HUD: WHUD_color.\nDisplaying street names should work."
+        return 0
+        ;;
+      0)
+        # CHUD_mono
+        HUD_INFO="Detected HUD: CHUD_mono.\nDisplaying street names will NOT work."
+        return 1
+        ;;
+      1)
+        # CHUD_color
+        HUD_INFO="Detected HUD: CHUD_color.\nDisplaying street names will NOT work."
+        return 1
+        ;;
+      "")
+        HUD_INFO="Could not detect HUD type and determine compatibility.\nDisplaying street names may NOT work."
+        return 1
+        ;;
+      *)
+        HUD_INFO="Detected unknown HUD type code: ${HUD_TYPE}.\nDisplaying street names may NOT work."
+        return 1
+        ;;
+    esac
+  elif [ "${HUD_EQUIP}" = "0" ]
+  then
+    HUD_INFO="This vehicle has no HUD.\nDisplaying navigation information will NOT work."
+    return 1
+  else
+    HUD_INFO="Could not detect whether a HUD is installed.\nDisplaying navigation information may NOT work."
+    return 1
+  fi
+}
+
 mkdir -p "${MYDIR}/logs"
 LOG_FILE="${SELF_NAME%.sh}.log"
 LOG="${MYDIR}/logs/${LOG_FILE}"
@@ -274,6 +350,14 @@ then
       fi
       copy_checked "${MYDIR}/config/${xml}" "/etc/${xml}" "${xml}"
     done
+
+    check_hud
+    echo "HUD check result: ${HUD_INFO}"
+    if [ "$?" -ne 0 ]
+    then
+      # Displaying street names in US region is independent of force_street_name config.
+      confirm "$HUD_INFO"
+    fi
 
     sync
     echo "=== $TITLE install complete ==="
