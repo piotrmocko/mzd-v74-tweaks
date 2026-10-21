@@ -19,7 +19,7 @@ A collection of tweaks and modifications for the Mazda infotainment system (CMU 
 
 `run.sh` automatically starts `launcher.sh` when the USB drive is loaded. The launcher displays on-screen dialog window with available scripts one at a time; choose **Open** to run the displayed script, **Next** to skip it, or **Exit** to leave the launcher. It also offers **Start over** after the list is complete.
 
-The launcher includes entries for **Terminal** and **Built-in MZD Scripts**, but those features are not available in the current version. **Reboot** is available from the launcher. Additional `.sh` files placed in the root of the USB drive are also offered after the built-in script entries; select **Open** to run one.
+The launcher includes entries for **Terminal** and **Built-in MZD Scripts** (the stock CMU system menu). **Terminal** closes the launcher and opens the terminal; a USB keyboard is needed to use it. **Reboot** is available from the launcher. Additional `.sh` files placed in the root of the USB drive are also offered after the built-in script entries; select **Open** to run one.
 
 ### Alternative: run scripts from Terminal
 

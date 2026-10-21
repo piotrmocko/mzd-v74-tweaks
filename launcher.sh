@@ -114,7 +114,9 @@ while :; do
 
   if ask "Would you like to open Terminal?" "Open" "Next" "Exit"
   then
-    confirm "Terminal is not available yet." # TODO: implement terminal
+    dialog_kill
+    /jci/scripts/run-terminal.sh
+    exit 0
   elif [ $? -eq 2 ]
   then
     exit 0
@@ -122,7 +124,8 @@ while :; do
 
   if ask "Would you like to open built-in MZD Scripts?" "Open" "Next" "Exit"
   then
-    confirm "Built-in MZD Scripts are not available yet." # TODO: implement built-in scripts
+    dialog_kill
+    /jci/tools/jci-systemDialog
   elif [ $? -eq 2 ]
   then
     exit 0
