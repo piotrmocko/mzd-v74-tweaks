@@ -51,6 +51,97 @@ ask() {
   fi
 }
 
+BUS_SVC="unix:path=/tmp/dbus_service_socket"
+BUS_HMI="unix:path=/tmp/dbus_hmi_socket"
+TRIES=5
+RETRY_SLEEP=${RETRY_SLEEP:-2}
+
+# vbs_get <control type>: prints the value (0..254), or nothing if unavailable.
+vbs_get()
+{
+  _t=$1
+  _n=0
+  while [ ${_n} -lt ${TRIES} ]
+  do
+    for _bus in "${BUS_SVC}" "${BUS_HMI}"
+    do
+      _reply=$(dbus-send --address="${_bus}" --print-reply --reply-timeout=2000 \
+        --dest=com.jci.vbs.settings /com/jci/vbs/settings \
+        com.jci.vbs.settings.GetCMUControlReq byte:${_t} uint32:0 2>&1)
+      echo "type ${_t}: answered by ${_bus}: $(echo "${_reply}" | tr '\n' ' ') on attempt $((_n + 1))/${TRIES}" >&2
+      # The first byte in the reply is the requested control value.
+      _v=$(echo "${_reply}" | awk '$1=="byte"{print $2; exit}')
+      if [ -n "${_v}" ] && [ "${_v}" != "255" ]
+      then
+        echo "${_v}"
+        return 0
+      fi
+    done
+    _n=$((_n + 1))
+    [ ${_n} -lt ${TRIES} ] && sleep ${RETRY_SLEEP}
+  done
+  return 1
+}
+
+detect_hud() {
+  HUD_EQUIP=$(vbs_get 13)
+  HUD_TYPE=""
+  [ "${HUD_EQUIP}" = "1" ] && HUD_TYPE=$(vbs_get 26)
+  echo "HUD result: equip='${HUD_EQUIP}' type='${HUD_TYPE}'" >&2
+
+  if [ "${HUD_EQUIP}" = "1" ]
+  then
+    case "${HUD_TYPE}" in
+      0) echo 'CHUD_mono' ;;
+      1) echo 'CHUD_color' ;;
+      2) echo 'WHUD_color' ;;
+      "") echo 'unknown' ;;
+      *) echo "$HUD_TYPE" ;;
+    esac
+  elif [ "${HUD_EQUIP}" = "0" ]
+  then
+    echo 'none'
+  else
+    echo 'unknown'
+  fi
+}
+
+check_hud() {
+  HUD_TYPE=$(detect_hud)
+  echo "Detected HUD type: ${HUD_TYPE}" >&2
+  case "${HUD_TYPE}" in
+    'WHUD_color')
+      HUD_INFO="Detected supported Windshield HUD."
+      return 0
+      ;;
+    'CHUD_mono')
+      RESULT="Only Windshield HUD is supported.\nDetected Combiner HUD (monochrome).\nNothing was changed."
+      return 1
+      ;;
+    'CHUD_color')
+      RESULT="Only Windshield HUD is supported.\nDetected Combiner HUD (color).\nNothing was changed."
+      return 1
+      ;;
+    'unknown')
+      HUD_INFO="Could not detect HUD type and determine compatibility."
+      if ask "${HUD_INFO}\nContinue with installation?" "Continue" "Cancel"
+      then
+        return 0
+      fi
+      echo "Installation cancelled: HUD type could not be detected."
+      return 2
+      ;;
+    'none')
+      RESULT="This vehicle has no HUD.\nNothing was changed."
+      return 1
+      ;;
+    *)
+      RESULT="Only Windshield HUD is supported.\nDetected HUD type code: ${HUD_TYPE}.\nNothing was changed."
+      return 1
+      ;;
+  esac
+}
+
 # --- Integrity of this script ---
 _want=$(md5_from "${SELF}.md5")
 if [ -z "$_want" ] || [ "$_want" != "$(md5_of "$SELF")" ]
@@ -115,7 +206,7 @@ js_install() {
   then
     RESULT="$1:\nthere is an unknown backup:\n${_bak}\nNothing was changed."; return 1
   fi
-  info "$1:\ninstalling...\nDo not remove the USB drive."
+  info "$1:\ninstalling...\n${HUD_INFO}\nDo not remove the USB drive."
   make_rw
   if [ ! -e "$_bak" ]
   then
@@ -193,6 +284,20 @@ js_uninstall() {
 RESULT=""
 if ask "What would you like to do?" "Install" "Uninstall" "Exit"
 then
+  check_hud
+  _hud_status=$?
+  if [ "$_hud_status" -eq 1 ]
+  then
+    echo "ERROR: $(echo "$RESULT" | sed 's/\\n/ /g')"
+    sync
+    confirm "$RESULT"
+    exit 1
+  elif [ "$_hud_status" -eq 2 ]
+  then
+    echo "Installation cancelled because HUD detection was unavailable"
+    echo "=== ${TITLE} complete ==="
+    exit 0
+  fi
   js_install "$TITLE" /jci/gui/apps/vehsettings/js/vehsettingsApp.js vehsettingsApp.js
 elif [ $? -eq 1 ]
 then

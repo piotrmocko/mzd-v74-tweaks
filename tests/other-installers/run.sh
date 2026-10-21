@@ -74,7 +74,7 @@ run() {
   LOG="/usb/logs/${SCRIPT%.sh}.log"
 }
 
-for TARGET in no-more-disclaimer hud-eu-region; do
+for TARGET in no-more-disclaimer; do
   case "$TARGET" in
     no-more-disclaimer)
       SCRIPT=no-more-disclaimer.sh
