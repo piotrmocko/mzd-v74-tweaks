@@ -45,10 +45,81 @@ RW_DONE=0
 make_rw() {
   if [ "$RW_DONE" = "0" ]
   then
-    echo 1 > /sys/class/gpio/Watchdog\ Disable/value
-    mount -o rw,remount /
+    if ! echo 1 > /sys/class/gpio/Watchdog\ Disable/value
+    then
+      echo "ERROR: Could not disable the watchdog"
+      return 1
+    fi
+    if ! mount -o rw,remount /
+    then
+      echo "ERROR: Could not remount / read-write"
+      echo 0 > /sys/class/gpio/Watchdog\ Disable/value
+      return 1
+    fi
     RW_DONE=1
   fi
+  return 0
+}
+
+make_ro() {
+  if [ "$RW_DONE" = "1" ]
+  then
+    if ! mount -o ro,remount /
+    then
+      echo "ERROR: Could not remount / read-only"
+      return 1
+    fi
+    if ! echo 0 > /sys/class/gpio/Watchdog\ Disable/value
+    then
+      echo "ERROR: Could not re-enable the watchdog"
+      return 1
+    fi
+    RW_DONE=0
+  fi
+  return 0
+}
+
+fail() {
+  echo "ERROR: $*"
+  FATAL=1
+}
+
+copy_checked() {
+  _copy_src=$1
+  _copy_dst=$2
+  _copy_label=$3
+  if [ ! -f "$_copy_src" ] || ! cp "$_copy_src" "$_copy_dst" || ! cmp -s "$_copy_src" "$_copy_dst"
+  then
+    fail "Could not copy or verify ${_copy_label}"
+    return 1
+  fi
+  return 0
+}
+
+patch_service() {
+  _patch_conf=$1
+  _patch_service=$2
+  _patch_library=$3
+  _patch_line="env_value=\"/data_persist/oem-aa-mod/${_patch_library}\""
+
+  if grep -qF "$_patch_line" "$_patch_conf"
+  then
+    echo "${_patch_library} already configured in ${_patch_conf}"
+    return 0
+  fi
+  if ! grep -q "name=\"${_patch_service}\"" "$_patch_conf"
+  then
+    fail "Service ${_patch_service} not found in ${_patch_conf}"
+    return 1
+  fi
+  if ! sed -i "/name=\"${_patch_service}\"/a\\            <environ_var env_name=\"LD_PRELOAD\" env_value=\"/data_persist/oem-aa-mod/${_patch_library}\"/>" "$_patch_conf" ||
+     ! grep -qF "$_patch_line" "$_patch_conf"
+  then
+    fail "Could not patch ${_patch_service} in ${_patch_conf}"
+    return 1
+  fi
+  echo "Patched ${_patch_service} in ${_patch_conf}"
+  return 0
 }
 
 mkdir -p "${MYDIR}/logs"
@@ -83,7 +154,8 @@ fi
 
 ask "What would you like to do?" "Install" "Uninstall" "Cancel"
 CHOICE=$?
-FATAL=0 # TODO: set to 1 if any fatal error occurs: failed to copy or patch. Adjust the ending message accordingly, for example: "A restore failed.\nDo NOT reboot, check logs/${LOG_FILE}."
+FATAL=0
+OPERATION=""
 
 if [ $CHOICE -eq 0 ]
 then
@@ -91,106 +163,121 @@ then
   # INSTALL
   # ============================================================
   echo "=== $TITLE install start ==="
+  OPERATION="install"
 
-  make_rw
-  info "Installing $TITLE...\nDo not remove USB drive."
-
-  # --- Read use_protocol_v1_6 from the config being deployed ---
-  # aap_service is only needed for GAL 1.6; default (missing file or key) is false.
-  CONF="${MYDIR}/config/libpatch.conf"
-  USE_PROTOCOL_V16="false"
-  if [ -f "${CONF}" ]
+  if ! make_rw
   then
-    val=$(sed 's/#.*//' "${CONF}" \
-            | grep -i '^[[:space:]]*use_protocol_v1_6[[:space:]]*=' \
-            | tail -n1 | cut -d'=' -f2- | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
-    case "${val}" in
-      true|1|yes|on) USE_PROTOCOL_V16="true" ;;
-    esac
+    fail "Could not make the system partition writable"
   fi
-  echo "use_protocol_v1_6 = ${USE_PROTOCOL_V16} (from ${CONF})"
+  if [ "$RW_DONE" = "1" ]
+  then
+    info "Installing $TITLE...\nDo not remove USB drive."
 
-  # --- Backup and patch jciAAPA in sm.conf and sm_WCP.conf ---
-  for conf in sm.conf sm_WCP.conf
-  do
-    if [ ! -e "/jci/sm/${conf}.orig" ]
+    # --- Read use_protocol_v1_6 from the config being deployed ---
+    # aap_service is only needed for GAL 1.6; default (missing file or key) is false.
+    CONF="${MYDIR}/config/libpatch.conf"
+    USE_PROTOCOL_V16="false"
+    if [ -f "${CONF}" ]
     then
-      cp -a "/jci/sm/${conf}" "/jci/sm/${conf}.orig"
-      # TODO validate if backup was successful
-      echo "Backed up ${conf}"
-    else
-      echo "${conf} backup already exists"
+      val=$(sed 's/#.*//' "${CONF}" \
+              | grep -i '^[[:space:]]*use_protocol_v1_6[[:space:]]*=' \
+              | tail -n1 | cut -d'=' -f2- | tr -d '[:space:]' | tr '[:upper:]' '[:lower:]')
+      case "${val}" in
+        true|1|yes|on) USE_PROTOCOL_V16="true" ;;
+      esac
     fi
+    echo "use_protocol_v1_6 = ${USE_PROTOCOL_V16} (from ${CONF})"
 
-    if ! grep -q "libpatch-blmjciaapa" "/jci/sm/${conf}"
-    then
-      sed -i '/name="jciAAPA"/a\            <environ_var env_name="LD_PRELOAD" env_value="/data_persist/oem-aa-mod/libpatch-blmjciaapa.so"/>' "/jci/sm/${conf}"
-      # TODO validate if patch was successful
-      echo "Patched jciAAPA in ${conf}"
-    else
-      echo "jciAAPA already patched in ${conf}, skipping"
-    fi
-
-    if ! grep -q "libpatch-svcjcinavi" "/jci/sm/${conf}"
-    then
-      sed -i '/name="jcinavi"/a\            <environ_var env_name="LD_PRELOAD" env_value="/data_persist/oem-aa-mod/libpatch-svcjcinavi.so"/>' "/jci/sm/${conf}"
-      # TODO validate if patch was successful
-      echo "Patched jcinavi in ${conf}"
-    else
-      echo "jcinavi already patched in ${conf}, skipping"
-    fi
-
-    if [ "${USE_PROTOCOL_V16}" = "true" ]
-    then
-      if ! grep -q "libpatch-aap_service" "/jci/sm/${conf}"
+    # --- Backup and patch jciAAPA in sm.conf and sm_WCP.conf ---
+    for conf in sm.conf sm_WCP.conf
+    do
+      if [ ! -f "/jci/sm/${conf}" ]
       then
-        sed -i '/name="aap_service"/a\            <environ_var env_name="LD_PRELOAD" env_value="/data_persist/oem-aa-mod/libpatch-aap_service.so"/>' "/jci/sm/${conf}"
-        # TODO validate if patch was successful
-        echo "Patched aap_service in ${conf}"
-      else
-        echo "aap_service already patched in ${conf}, skipping"
+        fail "Missing /jci/sm/${conf}"
+        continue
       fi
-    else
-      echo "use_protocol_v1_6 is false, skipping aap_service patch in ${conf}"
-    fi
-  done
+      if [ ! -e "/jci/sm/${conf}.orig" ]
+      then
+        if cp -a "/jci/sm/${conf}" "/jci/sm/${conf}.orig" &&
+           cmp -s "/jci/sm/${conf}" "/jci/sm/${conf}.orig"
+        then
+          echo "Backed up ${conf}"
+        else
+          fail "Could not back up ${conf}; leaving it unmodified"
+          continue
+        fi
+      else
+        if [ ! -f "/jci/sm/${conf}.orig" ]
+        then
+          fail "${conf}.orig is not a regular file; leaving ${conf} unmodified"
+          continue
+        fi
+        echo "${conf} backup already exists"
+      fi
 
-  # --- Install libraries ---
-  mkdir -p /data_persist/oem-aa-mod
-  cp "${MYDIR}/jci-shims/libpatch-blmjciaapa.so" /data_persist/oem-aa-mod/
-  echo "libpatch-blmjciaapa.so has been copied"
-  cp "${MYDIR}/jci-shims/libpatch-svcjcinavi.so" /data_persist/oem-aa-mod/
-  echo "libpatch-svcjcinavi.so has been copied"
-  if [ "${USE_PROTOCOL_V16}" = "true" ]
-  then
-    cp "${MYDIR}/jci-shims/libpatch-aap_service.so" /data_persist/oem-aa-mod/
-    echo "libpatch-aap_service.so has been copied"
-  else
-    echo "use_protocol_v1_6 is false, skipping libpatch-aap_service.so copy"
-  fi
-  cp "${MYDIR}/config/libpatch.conf" /data_persist/oem-aa-mod/
-  echo "libpatch.conf has been copied"
-  chmod 0644 /data_persist/oem-aa-mod/libpatch-*.so
+      patch_service "/jci/sm/${conf}" "jciAAPA" "libpatch-blmjciaapa.so"
+      patch_service "/jci/sm/${conf}" "jcinavi" "libpatch-svcjcinavi.so"
 
-  # --- Backup and install XML configs ---
-  for xml in aap_system_attributes.xml aap_system_attributes_UCP.xml
-  do
-    if [ ! -e "/etc/${xml}.orig" ]
+      if [ "${USE_PROTOCOL_V16}" = "true" ]
+      then
+        patch_service "/jci/sm/${conf}" "aap_service" "libpatch-aap_service.so"
+      else
+        echo "use_protocol_v1_6 is false, skipping aap_service patch in ${conf}"
+      fi
+    done
+
+    # --- Install libraries ---
+    if ! mkdir -p /data_persist/oem-aa-mod
     then
-      cp -a "/etc/${xml}" "/etc/${xml}.orig"
-      echo "Backed up ${xml}"
+      fail "Could not create /data_persist/oem-aa-mod"
     else
-      echo "${xml}.orig already exists, skipping backup"
+      copy_checked "${MYDIR}/jci-shims/libpatch-blmjciaapa.so" "/data_persist/oem-aa-mod/libpatch-blmjciaapa.so" "libpatch-blmjciaapa.so"
+      copy_checked "${MYDIR}/jci-shims/libpatch-svcjcinavi.so" "/data_persist/oem-aa-mod/libpatch-svcjcinavi.so" "libpatch-svcjcinavi.so"
+      if [ "${USE_PROTOCOL_V16}" = "true" ]
+      then
+        copy_checked "${MYDIR}/jci-shims/libpatch-aap_service.so" "/data_persist/oem-aa-mod/libpatch-aap_service.so" "libpatch-aap_service.so"
+      else
+        echo "use_protocol_v1_6 is false, skipping libpatch-aap_service.so copy"
+      fi
+      copy_checked "${MYDIR}/config/libpatch.conf" "/data_persist/oem-aa-mod/libpatch.conf" "libpatch.conf"
+      if ! chmod 0644 /data_persist/oem-aa-mod/libpatch-*.so
+      then
+        fail "Could not set permissions on installed libraries"
+      fi
     fi
-    cp "${MYDIR}/config/${xml}" "/etc/${xml}"
-    echo "Installed ${xml}"
-  done
 
-  sync
-  echo "=== $TITLE install complete ==="
+    # --- Backup and install XML configs ---
+    for xml in aap_system_attributes.xml aap_system_attributes_UCP.xml
+    do
+      if [ ! -f "/etc/${xml}" ]
+      then
+        fail "Missing /etc/${xml}"
+        continue
+      fi
+      if [ ! -e "/etc/${xml}.orig" ]
+      then
+        if cp -a "/etc/${xml}" "/etc/${xml}.orig" &&
+           cmp -s "/etc/${xml}" "/etc/${xml}.orig"
+        then
+          echo "Backed up ${xml}"
+        else
+          fail "Could not back up ${xml}; leaving it unmodified"
+          continue
+        fi
+      else
+        if [ ! -f "/etc/${xml}.orig" ]
+        then
+          fail "${xml}.orig is not a regular file; leaving ${xml} unmodified"
+          continue
+        fi
+        echo "${xml}.orig already exists, skipping backup"
+      fi
+      copy_checked "${MYDIR}/config/${xml}" "/etc/${xml}" "${xml}"
+    done
 
-  # TODO ask the user to Rebbot now or Reboot later, and reboot only if the user chooses to reboot now. If Reboot later, then revert make_rw
-  info "Installation complete!\nYou can remove the USB drive.\nRebooting in 15 seconds..."
+    sync
+    echo "=== $TITLE install complete ==="
+  fi
 
 elif [ $CHOICE -eq 1 ]
 then
@@ -198,68 +285,101 @@ then
   # UNINSTALL
   # ============================================================
   echo "=== $TITLE uninstall start ==="
+  OPERATION="uninstall"
 
-  make_rw
-  info "Uninstalling $TITLE...\nDo not remove USB drive."
+  if ! make_rw
+  then
+    fail "Could not make the system partition writable"
+  fi
+  if [ "$RW_DONE" = "1" ]
+  then
+    info "Uninstalling $TITLE...\nDo not remove USB drive."
 
-  # --- Restore sm.conf and sm_WCP.conf ---
-  for conf in sm.conf sm_WCP.conf
-  do
-    # TODO always remove the entry manually, never by restorying the backup, because the backup may be outdated if the user updated the CMU firmware after installing this mod.
-    if [ -e "/jci/sm/${conf}.orig" ]
-    then
-      cp -a "/jci/sm/${conf}.orig" "/jci/sm/${conf}"
-      # TODO remove the backup after validating that manual removal was successful and the mod line is no longer present
-      rm "/jci/sm/${conf}.orig"
-      echo "Restored ${conf} from backup"
-    else
-      echo "WARNING: ${conf}.orig not found; removing LD_PRELOAD lines manually"
-      sed -i '/env_value="\/data_persist\/oem-aa-mod\//d' "/jci/sm/${conf}"
-      echo "Removed LD_PRELOAD entries from ${conf}"
-    fi
-  done
+    # --- Restore sm.conf and sm_WCP.conf ---
+    for conf in sm.conf sm_WCP.conf
+    do
+      if [ ! -f "/jci/sm/${conf}" ]
+      then
+        fail "Missing /jci/sm/${conf}"
+        continue
+      fi
+      if ! sed -i '/env_value="\/data_persist\/oem-aa-mod\//d' "/jci/sm/${conf}" ||
+         grep -qF '/data_persist/oem-aa-mod/' "/jci/sm/${conf}"
+      then
+        fail "Could not remove OEM Android Auto entries from ${conf}"
+      else
+        echo "Removed OEM Android Auto entries from ${conf}"
+        if [ -e "/jci/sm/${conf}.orig" ]
+        then
+          if rm "/jci/sm/${conf}.orig"
+          then
+            echo "Removed ${conf}.orig"
+          else
+            echo "WARNING: Could not remove ${conf}.orig"
+          fi
+        fi
+      fi
+    done
 
-  # --- Restore XML configs ---
-  for xml in aap_system_attributes.xml aap_system_attributes_UCP.xml
-  do
-    if [ -e "/etc/${xml}.orig" ]
-    then
-      cp -a "/etc/${xml}.orig" "/etc/${xml}"
-      # TODO remove the backup only if restoring (cp) was successful, otherwise keep it for manual restore
-      rm "/etc/${xml}.orig"
-      echo "Restored ${xml} from backup"
-    else
-      echo "WARNING: ${xml}.orig not found, skipping restore"
-    fi
-  done
+    # --- Restore XML configs ---
+    for xml in aap_system_attributes.xml aap_system_attributes_UCP.xml
+    do
+      if [ -e "/etc/${xml}.orig" ]
+      then
+        if cp -a "/etc/${xml}.orig" "/etc/${xml}" &&
+           cmp -s "/etc/${xml}.orig" "/etc/${xml}"
+        then
+          if rm "/etc/${xml}.orig"
+          then
+            echo "Restored ${xml} and removed its backup"
+          else
+            echo "WARNING: Restored ${xml}, but could not remove its backup"
+          fi
+        else
+          fail "Could not restore ${xml}; backup retained at /etc/${xml}.orig"
+        fi
+      else
+        echo "WARNING: ${xml}.orig not found, skipping restore"
+      fi
+    done
 
-  # --- Remove installed libraries and config ---
-  rm -f /data_persist/oem-aa-mod/libpatch-blmjciaapa.so
-  echo "Removed libpatch-blmjciaapa.so"
-  rm -f /data_persist/oem-aa-mod/libpatch-svcjcinavi.so
-  echo "Removed libpatch-svcjcinavi.so"
-  rm -f /data_persist/oem-aa-mod/libpatch-aap_service.so
-  echo "Removed libpatch-aap_service.so"
-  rm -f /data_persist/oem-aa-mod/libpatch.conf
-  echo "Removed libpatch.conf"
-  rmdir /data_persist/oem-aa-mod 2>/dev/null && echo "Removed /data_persist/oem-aa-mod directory"
+    # --- Remove installed libraries and config ---
+    for file in libpatch-blmjciaapa.so libpatch-svcjcinavi.so libpatch-aap_service.so libpatch.conf
+    do
+      if ! rm -f "/data_persist/oem-aa-mod/${file}"
+      then
+        echo "WARNING: Could not remove ${file}"
+      else
+        echo "Removed ${file}"
+      fi
+    done
+    rmdir /data_persist/oem-aa-mod 2>/dev/null && echo "Removed /data_persist/oem-aa-mod directory"
 
-  sync
-  echo "=== $TITLE uninstall complete ==="
-
-  # TODO ask the user to Rebbot now or Reboot later, and reboot only if the user chooses to reboot now. If Reboot later, then revert make_rw
-  info "Uninstall complete!\nYou can remove the USB drive.\nRebooting in 15 seconds..."
+    sync
+    echo "=== $TITLE uninstall complete ==="
+  fi
 
 else
   # ============================================================
   # CANCEL (Cancel button, or the dialog failed): change nothing, no reboot
   # ============================================================
-  sync
-  confirm "Cancelled.\nNothing was changed.\nYou can remove the USB drive."
   exit 0
 fi
 
-sleep 15
-dialog_kill
-reboot
+sync
+if [ "$FATAL" = "1" ]
+then
+  echo "=== $TITLE stopped after the ${OPERATION} operation failed, no reboot ==="
+  confirm "The ${OPERATION} operation failed.\nDo NOT reboot\nCheck logs/${LOG_FILE}."
+  exit 1
+fi
+
+if ask "The ${OPERATION} completed successfully.\nRemove the USB drive and reboot." "Reboot now" "Reboot later"
+then
+  reboot
+else
+  # Operation requires reboot to take effect, but user chose to reboot later.
+  # Rstoring the system partition to read-only. Do not report the failre as reboot is required.
+  make_ro
+fi
 exit 0
