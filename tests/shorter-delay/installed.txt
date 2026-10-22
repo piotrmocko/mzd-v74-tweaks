@@ -1,0 +1,11 @@
+// omitted OEM lines
+        listReorderScrollTimeout :              0, // @SW00155245, needs faster scroll during re-oreder
+
+        // multicontroller hold timeouts and intervals
+        autoscrollTier1Timeout :                150,
+        autoscrollTier2Timeout :                300,
+        autoscrollTier1Interval :               200,
+        autoscrollTier2Interval :               300,
+
+        hvThreshold :                           45 * (Math.PI/180),
+

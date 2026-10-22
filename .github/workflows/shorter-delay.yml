@@ -1,0 +1,15 @@
+name: Shorter List Delay tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  tweak:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Targeted change, rollback and isolation tests
+        run: python3 tests/shorter-delay/run.py
