@@ -1,13 +1,36 @@
 name: Release
 
+# Publishes a ready-to-copy USB drive ZIP as a GitHub release.
+#
+#  - Push a tag X.Y.Z (release) or X.Y.Z-suffix (pre-release, e.g. 1.1.0-rc1) on a commit
+#    that is on main. The release name and version are the tag.
+#  - Or run it manually (Actions > Release > Run workflow) with the name of a tag that
+#    already exists, e.g. to publish a tag that was pushed before this workflow existed.
+#
+# The ZIP also contains the OEM Android Auto Mods (android-auto.sh): the shims and the
+# config files of the oem-aa-mod release pinned below are downloaded, checked against the
+# release's SHA256SUMS and put into jci-shims/ (libpatch-*.so) and config/ (resources/*).
 on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+      - '[0-9]+.[0-9]+.[0-9]+-*'
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to release (X.Y.Z or X.Y.Z-suffix)'
+        required: true
 
 permissions:
   contents: write
 
+env:
+  # oem-aa-mod release that android-auto.sh installs. Change it here to ship another one.
+  OEM_AA_MOD_REPO: VitaliyKurokhtin/oem-aa-mod
+  OEM_AA_MOD_TAG: 0.10.0
+
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -17,72 +40,101 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
           fetch-depth: 0
 
-      - name: Package and publish release
+      - name: Check the tag
+        id: tag
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! printf '%s\n' "$TAG" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::Tag '$TAG' is not X.Y.Z or X.Y.Z-suffix."
+            exit 1
+          fi
+          if ! git rev-parse --verify --quiet "refs/tags/$TAG" >/dev/null; then
+            echo "::error::Tag '$TAG' does not exist."
+            exit 1
+          fi
+          sha=$(git rev-parse "refs/tags/$TAG^{commit}")
+          if ! git merge-base --is-ancestor "$sha" origin/main; then
+            echo "::error::Tag '$TAG' ($sha) is not on main."
+            exit 1
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::Release '$TAG' already exists."
+            exit 1
+          fi
+          prerelease=false
+          case "$TAG" in *-*) prerelease=true ;; esac
+          {
+            echo "name=$TAG"
+            echo "sha=$sha"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Download the OEM Android Auto Mods release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-
-          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
-            echo "::error::Run the Release workflow from the main branch."
-            exit 1
-          fi
-
-          latest_tag=$(git tag --merged HEAD --list '[0-9]*.[0-9]*.[0-9]*' |
-            grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)
-          if [ -z "$latest_tag" ]; then
-            version=1.0.0
-            commit_range=HEAD
-          else
-            commit_range="${latest_tag}..HEAD"
-            subjects=$(git log --no-merges --format=%s "$commit_range")
-            messages=$(git log --no-merges --format='%s%n%b' "$commit_range")
-            if [ -z "$subjects" ]; then
-              echo "::error::No non-merge commits since $latest_tag; there is nothing to release."
+          zip="oem-aa-mod-${OEM_AA_MOD_TAG}.zip"
+          mkdir -p oem-aa-mod
+          gh release download "$OEM_AA_MOD_TAG" -R "$OEM_AA_MOD_REPO" -D oem-aa-mod -p "$zip" -p SHA256SUMS
+          # SHA256SUMS lists "./<file>"; check only the ZIP we use.
+          (cd oem-aa-mod && grep -E "[ *](\./)?${zip}\$" SHA256SUMS | sed 's# \*\?\./# #' | sha256sum -c -)
+          unzip -q "oem-aa-mod/$zip" -d oem-aa-mod
+          src="oem-aa-mod/oem-aa-mod-${OEM_AA_MOD_TAG}"
+          for f in libpatch-blmjciaapa.so libpatch-svcjcinavi.so libpatch-aap_service.so \
+                   resources/libpatch.conf resources/aap_system_attributes.xml \
+                   resources/aap_system_attributes_UCP.xml; do
+            if [ ! -f "$src/$f" ]; then
+              echo "::error::$f is missing from $zip"
               exit 1
             fi
+          done
+          echo "SRC=$src" >> "$GITHUB_ENV"
 
-            IFS=. read -r major minor patch <<< "$latest_tag"
-            major=$((10#$major))
-            minor=$((10#$minor))
-            patch=$((10#$patch))
-            if printf '%s\n' "$messages" | grep -Eq '(^|[[:space:]])BREAKING CHANGE:' ||
-              printf '%s\n' "$subjects" | grep -Eq '^[[:alnum:]-]+(\([^)]*\))?!:'; then
-              major=$((major + 1))
-              minor=0
-              patch=0
-            elif printf '%s\n' "$subjects" | grep -Eq '^feat(\([^)]*\))?:'; then
-              minor=$((minor + 1))
-              patch=0
-            else
-              patch=$((patch + 1))
-            fi
-            version="${major}.${minor}.${patch}"
-          fi
-
-          if git rev-parse --verify --quiet "refs/tags/$version" >/dev/null; then
-            echo "::error::Tag $version already exists."
-            exit 1
-          fi
-
+      - name: Package and publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.name }}
+          SHA: ${{ steps.tag.outputs.sha }}
+          PRERELEASE: ${{ steps.tag.outputs.prerelease }}
+        run: |
+          set -euo pipefail
           mkdir -p dist staging
+
+          # Release notes: commits since the previous X.Y.Z(-suffix) tag (all commits for the first one).
+          prev=$(git tag --merged "$SHA" --list '[0-9]*.[0-9]*.[0-9]*' |
+            grep -Fxv "$TAG" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+(-.*)?$' |
+            sort -V | tail -n 1 || true)
+          range="$SHA"
+          [ -n "$prev" ] && range="$prev..$SHA"
           notes="dist/release-notes.md"
           {
             echo "## Changes"
             echo
-            git log --no-merges --format='- %s' "$commit_range"
+            git log --no-merges --format='- %s' "$range"
+            echo
+            echo "Includes OEM Android Auto Mods [${OEM_AA_MOD_TAG}](https://github.com/${OEM_AA_MOD_REPO}/releases/tag/${OEM_AA_MOD_TAG})."
           } > "$notes"
-          if ! grep -q '^- ' "$notes"; then
-            echo "::error::No non-merge commit messages found for the release notes."
-            exit 1
-          fi
+          cat "$notes"
 
-          package="staging/mzd-v74-tweaks-${version}"
+          package="staging/mzd-v74-tweaks-${TAG}"
           mkdir -p "$package"
           cp -R ./*.sh ./*.md5 mp3title.txt js mp3 jci-mods jci-org jci-shims "$package/"
           cp -R autorun/. "$package/"
+
+          # OEM Android Auto Mods: shims next to ours, config files in config/, each with an .md5.
+          cp "$SRC"/libpatch-*.so "$package/jci-shims/"
+          mkdir -p "$package/config"
+          cp "$SRC"/resources/* "$package/config/"
+          for f in "$package"/jci-shims/libpatch-*.so "$package"/config/*; do
+            (cd "$(dirname "$f")" && md5sum "$(basename "$f")" > "$(basename "$f").md5")
+          done
 
           while IFS= read -r -d '' checksum; do
             if ! (cd "$(dirname "$checksum")" && md5sum -c "$(basename "$checksum")"); then
@@ -91,7 +143,10 @@ jobs:
             fi
           done < <(find "$package" -type f -name '*.md5' -print0)
 
-          archive="dist/mzd-v74-tweaks-${version}.zip"
+          archive="dist/mzd-v74-tweaks-${TAG}.zip"
           (cd "$package" && zip -qr "$GITHUB_WORKSPACE/$archive" .)
           unzip -l "$archive"
-          gh release create "$version" "$archive" --title "$version" --notes-file "$notes" --target "$GITHUB_SHA"
+
+          prerelease_flag=""
+          [ "$PRERELEASE" = "true" ] && prerelease_flag="--prerelease"
+          gh release create "$TAG" "$archive" --title "$TAG" --notes-file "$notes" --verify-tag $prerelease_flag
