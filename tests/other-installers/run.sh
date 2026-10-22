@@ -74,7 +74,7 @@ run() {
   LOG="/usb/logs/${SCRIPT%.sh}.log"
 }
 
-for TARGET in no-more-disclaimer hud-eu-region; do
+for TARGET in no-more-disclaimer hud-eu-region main-menu-loop; do
   case "$TARGET" in
     no-more-disclaimer)
       SCRIPT=no-more-disclaimer.sh
@@ -87,6 +87,12 @@ for TARGET in no-more-disclaimer hud-eu-region; do
       APP=/jci/gui/apps/vehsettings/js/vehsettingsApp.js
       ORG=vehsettingsApp.js.org
       MOD=vehsettingsApp.js
+      ;;
+    main-menu-loop)
+      SCRIPT=main-menu-loop.sh
+      APP=/jci/gui/apps/system/controls/MainMenu/js/MainMenuCtrl.js
+      ORG=MainMenuCtrl.js.org
+      MOD=MainMenuCtrl.js
       ;;
   esac
   ORG_MD5=$(m5 "$REPO/jci-org/$ORG")

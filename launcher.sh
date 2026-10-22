@@ -67,7 +67,8 @@ is_known_script() {
 
   case "$1" in
     android-auto.sh|touchscreen.sh|no-more-disclaimer.sh|hud-eu-region.sh|\
-    fuel-consumption.sh|logs-collector.sh|backup-jci.sh|revert-aio.sh|run.sh)
+    fuel-consumption.sh|list-tweaks.sh|main-menu-loop.sh|ssh.sh|\
+    logs-collector.sh|backup-jci.sh|revert-aio.sh|run.sh)
       return 0
       ;;
     *)
@@ -105,6 +106,18 @@ while :; do
   [ "$?" -eq 2 ] && continue
 
   run_known_script "fuel-consumption.sh" "Fuel Consumption Tweaks"
+  handle_script_result "$?"
+  [ "$?" -eq 2 ] && continue
+
+  run_known_script "list-tweaks.sh" "List Tweaks"
+  handle_script_result "$?"
+  [ "$?" -eq 2 ] && continue
+
+  run_known_script "main-menu-loop.sh" "Main Menu Loop Tweak"
+  handle_script_result "$?"
+  [ "$?" -eq 2 ] && continue
+
+  run_known_script "ssh.sh" "SSH Access"
   handle_script_result "$?"
   [ "$?" -eq 2 ] && continue
 

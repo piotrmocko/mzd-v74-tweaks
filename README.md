@@ -134,6 +134,46 @@ The launcher is the recommended option for normal use. The terminal method is us
 - Verifies file integrity before completion
 - Logs all operations for troubleshooting
 
+### List Tweaks - `list-tweaks.sh`
+
+Three independent options, each with **Install**, **Uninstall**, and **Skip**:
+
+- **No list beep**: mute the two long multicontroller list beeps.
+- **Shorter list delay**: reduce list autoscroll delays and intervals.
+- **List loop**: wrap from the last selectable list item to the first and back.
+
+These options share `List2Ctrl.js`. The installer recognizes all eight known
+combinations by checksum and keeps the other options when changing one. The
+original is backed up next to the system file as `List2Ctrl.js.org`, using the
+same backup convention as the other installers. Unknown files are refused.
+
+### Main Menu Loop - `main-menu-loop.sh`
+
+Wrap navigation between the first and last of the five main-menu icons.
+Install and uninstall use the standard dialog and `.org` backup workflow.
+
+### SSH Access - `ssh.sh`
+
+Enable the native OpenSSH server on **port 22**, with user **cmu** and password
+**jci**. Wi-Fi must be enabled and connected; the installer does not change
+Wi-Fi settings. The login is a root account. SSH is reachable by other devices
+that can reach the CMU on the same network.
+
+The service starts through `/jci/scripts/stage_wifi.sh`, keeps its files under
+`/tmp/mnt/resources/mzd-v74-tweaks/ssh`, and uses the CMU's existing host key.
+No personal SSH keys are included. It refuses another listener on port 22 and
+leaves the OEM listener on port 36000 alone. The password is provided through a
+RAM-only account-file overlay; the factory account file is not rewritten.
+Uninstall restores the `.org` startup script and stops this service.
+
+Installer logs are written to `logs/ssh.log` on the USB drive. Runtime logs are
+written to `reports/ssh-*/run.log` only when a writable USB drive containing
+`services/ssh/usb-log-marker.txt` is attached. Without one, runtime output is
+discarded. The USB drive is not needed for SSH after installation.
+
+See [navigation and SSH test coverage](docs/navigation-and-ssh.md) for the
+vehicle evidence and the limits of the newly integrated installers.
+
 ## File Structure
 
 ```

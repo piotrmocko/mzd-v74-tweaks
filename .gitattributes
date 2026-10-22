@@ -1,0 +1,11 @@
+# Preserve exact bytes for the navigation payloads and SSH runtime checksums.
+jci-org/List2Ctrl.js.org -text
+jci-org/MainMenuCtrl.js.org -text
+jci-org/stage_wifi.sh.org -text
+jci-mods/List2Ctrl-*.js -text
+jci-mods/MainMenuCtrl.js -text
+services/ssh/* -text
+list-tweaks.sh text eol=lf
+main-menu-loop.sh text eol=lf
+ssh.sh text eol=lf
+launcher.sh text eol=lf

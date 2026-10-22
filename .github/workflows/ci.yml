@@ -127,6 +127,15 @@ jobs:
         # These installers only modify JS files; sm.conf does not apply.
         run: docker run --rm --tmpfs /usb -v "$PWD:/repo:ro" busybox:1.36 sh /repo/tests/other-installers/run.sh
 
+      - name: Check navigation combinations and selective uninstall
+        run: python3 tests/navigation/run.py
+
+      - name: Test SSH supervisor with isolated kernel and network commands
+        run: python3 tests/ssh-service/run.py
+
+      - name: Check local release packaging includes the complete SSH payload
+        run: python3 tests/navigation/check-package.py
+
   shims:
     runs-on: ubuntu-latest
     timeout-minutes: 15
