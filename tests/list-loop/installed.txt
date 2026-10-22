@@ -1,0 +1,128 @@
+List2Ctrl.prototype._handleMCCW = function()
+// omitted OEM lines
+            // get relative focussed index before moving the focus
+            var rfi = this._getRelativeFocussedIndex();
+
+            var currentFocussedIndex = this._getFocussedIndex();
+
+            // attempt focus move
+            if (rfi <= bottomFocusThreshold)
+            {
+// omitted OEM lines
+
+            // get relative focussed index after moving the focus
+            rfi = this._getRelativeFocussedIndex();
+
+            if (this._getFocussedIndex() == currentFocussedIndex) //didn't move
+            {
+                if (this.dataList && this.dataList.items)
+                {
+                    var index = 0;
+                    while (index < this.dataList.items.length && this.dataList.items[index].disabled) index++;
+                    if (index < this.dataList.items.length)
+                    {
+                        this._manageFocus(index);
+                        return 'consumed';
+                    }
+                }
+            }
+        }
+
+        // attempt scroll if the focus has passed the threshold
+};
+List2Ctrl.prototype._handleMCCCW = function()
+// omitted OEM lines
+            // get relative focussed index before moving the focus
+            var rfi = this._getRelativeFocussedIndex();
+
+            var currentFocussedIndex = this._getFocussedIndex();
+
+            // attempt focus move
+            if (rfi >= 1)
+            {
+// omitted OEM lines
+
+            // get relative focussed index after moving the focus
+            rfi = this._getRelativeFocussedIndex();
+
+            if (this._getFocussedIndex() == currentFocussedIndex) //didn't move
+            {
+                if (this.dataList && this.dataList.items)
+                {
+                    var index = this.dataList.items.length - 1;
+                    while (index >= 0 && this.dataList.items[index].disabled) index--;
+                    if (index >= 0)
+                    {
+                        this._manageFocus(index);
+                        return 'consumed';
+                    }
+                }
+            }
+        }
+
+        // attempt scroll if the focus is at the first item
+};
+List2Ctrl.prototype._handleMCDown = function()
+// omitted OEM lines
+                // get relative focussed index before moving the focus
+                var rfi = this._getRelativeFocussedIndex();
+
+                var currentFocussedIndex = this._getFocussedIndex();
+
+                // attempt focus move
+                if (rfi <= bottomFocusThreshold)
+                {
+// omitted OEM lines
+
+                // get relative focussed index after moving the focus
+                rfi = this._getRelativeFocussedIndex();
+
+                if (this._getFocussedIndex() == currentFocussedIndex) //didn't move
+                {
+                    if (this.dataList && this.dataList.items)
+                    {
+                        var index = 0;
+                        while (index < this.dataList.items.length && this.dataList.items[index].disabled) index++;
+                        if (index < this.dataList.items.length)
+                        {
+                            this._manageFocus(index);
+                            return 'consumed';
+                        }
+                    }
+                }
+            }
+            // attempt scroll if the focus has passed the threshold
+            if (rfi > bottomFocusThreshold)
+};
+List2Ctrl.prototype._handleMCUp = function()
+// omitted OEM lines
+                // get relative focussed index before moving the focus
+                var rfi = this._getRelativeFocussedIndex();
+
+                var currentFocussedIndex = this._getFocussedIndex();
+
+                // attempt focus move
+                if (rfi >= 1)
+                {
+// omitted OEM lines
+
+                // get relative focussed index after moving the focus
+                rfi = this._getRelativeFocussedIndex();
+
+                if (this._getFocussedIndex() == currentFocussedIndex) //didn't move
+                {
+                    if (this.dataList && this.dataList.items)
+                    {
+                        var index = this.dataList.items.length - 1;
+                        while (index >= 0 && this.dataList.items[index].disabled) index--;
+                        if (index >= 0)
+                        {
+                            this._manageFocus(index);
+                            return 'consumed';
+                        }
+                    }
+                }
+            }
+
+            // attempt scroll if the focus is at the first item
+};
