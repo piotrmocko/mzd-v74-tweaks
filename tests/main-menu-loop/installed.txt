@@ -1,0 +1,14 @@
+MainMenuCtrl.prototype._offsetFocus = function(direction)
+// omitted OEM lines
+
+    if (index < 0)
+    {
+        index = 4;
+    }
+    if (index > 4)
+    {
+        index = 0;
+    }
+
+    if (index !== this._getFocus())
+};
