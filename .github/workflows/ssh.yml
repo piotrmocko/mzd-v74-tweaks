@@ -1,0 +1,19 @@
+name: SSH tests
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  ssh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: SSH installer isolation tests
+        run: python3 tests/ssh-installer/run.py
+      - name: SSH supervisor isolation tests
+        run: python3 tests/ssh-service/run.py
+      - name: Verify the release copy recipe includes all SSH files
+        run: python3 tests/ssh-installer/check-package.py

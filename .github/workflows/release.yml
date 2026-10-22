@@ -125,7 +125,7 @@ jobs:
 
           package="staging/mzd-v74-tweaks-${TAG}"
           mkdir -p "$package"
-          cp -R ./*.sh ./*.md5 mp3title.txt js mp3 jci-mods jci-org jci-shims "$package/"
+          cp -R ./*.sh ./*.md5 mp3title.txt js mp3 jci-mods jci-org jci-shims services "$package/"
           cp -R autorun/. "$package/"
 
           # OEM Android Auto Mods: shims next to ours, config files in config/, each with an .md5.
