@@ -84,7 +84,21 @@ The launcher is the recommended option for normal use. The terminal method is us
 **Documentation**:
 - Details of the fuel consumption tweaks: [docs/fuel-consumption.md](docs/fuel-consumption.md).
 
-### 4. `logs-collector.sh` - Running Logs Collector
+### 4. `android-auto.sh` - OEM Android Auto Mods
+**Purpose**: Installs or uninstalls [OEM Android Auto Mods](https://github.com/VitaliyKurokhtin/oem-aa-mod) by Vitaliy Kurokhtin: touchscreen in Android Auto, navigation (street name, maneuver, distance) on the HUD and more. Based on the installer by [Bijan-A](https://github.com/Bijan-A/oem-aa-mod-installer).
+
+**Included version**: the release ZIP contains the oem-aa-mod release set in `OEM_AA_MOD_TAG` in `.github/workflows/release.yml` (currently `0.10.0`). Its shims are in `jci-shims/libpatch-*.so` and its configuration in `config/` (`libpatch.conf`, `aap_system_attributes.xml`, `aap_system_attributes_UCP.xml`). These files are not in the git repository, only in the release ZIP.
+
+**Settings**: to change a setting (for example `force_street_name` or `use_protocol_v1_6`), edit `config/libpatch.conf` on the USB drive before running the script. The keys are described in [installation.md](https://github.com/VitaliyKurokhtin/oem-aa-mod/blob/main/docs/installation.md) of oem-aa-mod.
+
+**Running**:
+- Choose **Install**, **Uninstall** or **Cancel** (Cancel changes nothing).
+- **Install** backs up `/jci/sm/sm.conf`, `/jci/sm/sm_WCP.conf` (`.orig`) and the two `/etc/aap_system_attributes*.xml` files (`.orig`), adds the shims to the services (`aap_service` only if `use_protocol_v1_6 = true`), and copies the shims and `libpatch.conf` to `/data_persist/oem-aa-mod/`. Every copy is verified. Running **Install** again over an existing installation updates it.
+- At the end of Install, the script checks the HUD: street names on the HUD need the windshield color HUD (WHUD_color). If another HUD type or no HUD is found, a message tells you what will not work.
+- **Uninstall** removes the shim entries from both `sm.conf` files, restores the XML files from their backups and removes `/data_persist/oem-aa-mod/`.
+- Then choose **Reboot now** or **Reboot later**. If a step failed, the script says so: do NOT reboot, and check `logs/android-auto.log`.
+
+### 5. `logs-collector.sh` - Running Logs Collector
 **Purpose**: Copies the CMU's `/var/log/running_log` files to the USB drive or changes their rotation size.
 
 **Running**:
@@ -92,10 +106,10 @@ The launcher is the recommended option for normal use. The terminal method is us
 - Choose **Change size** and then **Enlarged 5MB** to increase the running log rotation size. This can help collect more logs when using an OEM AA Mods debug release. The CMU must reboot for the new size to take effect.
 - To preserve diagnostic output, run **Copy logs before turning off the ignition**. Turning the ignition off first can cause the running logs you want to collect to be lost.
 
-### 5. `touchscreen.sh` - Touchscreen Enabled Tweak
+### 6. `touchscreen.sh` - Touchscreen Enabled Tweak
 **Purpose**: Enables touchscreen input while the vehicle is moving.
 
-### 6. `backup-jci.sh` - JCI Full System Backup
+### 7. `backup-jci.sh` - JCI Full System Backup
 **Purpose**: Creates a complete backup of the JCI system directory.
 
 **What it does**:
@@ -109,7 +123,7 @@ The launcher is the recommended option for normal use. The terminal method is us
 - Backup file: `backup/JCI-[VERSION].zip`
 - Use this backup to restore your system to a known-good state
 
-### 7. `revert-aio.sh` - Uninstall AIO base Tweaks only
+### 8. `revert-aio.sh` - Uninstall AIO base Tweaks only
 **Purpose**: Removes previously installed base modifications of AIO (All-In-One) Tweaks from your system. It doesn't remove the targeted mods. Remove them with AIO scripts.
 
 **What it does**:
@@ -128,6 +142,7 @@ mzd-v74-tweaks/
 ├── run.sh                             # Starts the launcher
 ├── launcher.sh                        # Offers scripts and launcher actions
 ├── fuel-consumption.sh                # Fuel Consumption tweaks
+├── android-auto.sh                    # OEM Android Auto Mods installer
 ├── hud-eu-region.sh                   # HUD Street Info region tweak
 ├── no-more-disclaimer.sh              # Disclaimer removal tweak
 ├── touchscreen.sh                     # Touchscreen tweak
@@ -140,7 +155,8 @@ mzd-v74-tweaks/
 ├── jci-mods/                          # Modified application files
 ├── jci-org/                           # Original application files
 ├── jci-patches/                       # Rebuild modified JS files from originals
-├── jci-shims/                         # Prebuilt ARM shims and checksums
+├── jci-shims/                         # Prebuilt ARM shims and checksums (+ oem-aa-mod shims in the release ZIP)
+├── config/                            # oem-aa-mod configuration (release ZIP only)
 ├── mazda/                             # Toolchain submodule and shim source code
 ├── build/                             # Shim build and checksum tools
 ├── docs/                              # Additional technical documentation
@@ -196,8 +212,9 @@ If you encounter issues:
 ## Contributing
 
 - Every file an installer brings, and the installer itself, has an `.md5` next to it (`md5sum` format). The **CI** workflow fails if any `.md5` does not match its file. It also checks that `jci-patches/` reproduces `jci-mods/`, that the shell scripts parse, and that `jci-shims/` matches what `mazda/patches/` builds to.
-- CI also runs the tests in `tests/`: `fuel-consumption/installer/run.sh` simulates `fuel-consumption.sh` in busybox (`docker run --rm --tmpfs /usb -v "$PWD:/repo:ro" busybox:1.36 sh /repo/tests/fuel-consumption/installer/run.sh`), and `fuel-consumption/shim/run.sh` runs the shims under qemu-arm against stand-in libraries (needs the m3-toolchain and `qemu-user`). The **Build** and **Release** workflows run these tests as part of their validation.
-- The **Build** workflow rebuilds shims with the pinned m3-toolchain and opens a PR when `jci-shims/` changes. The **Release** workflow is manual-only and publishes a ready-to-copy USB drive ZIP. Its version starts at `1.0.0`; later releases use semantic commit-message bumps (`feat` = minor, `fix` and other changes = patch, `BREAKING CHANGE` or `!` = major). Release descriptions list non-merge commit subjects since the previous release.
+- CI also runs the tests in `tests/`: `fuel-consumption/installer/run.sh` simulates `fuel-consumption.sh` in busybox (`docker run --rm --tmpfs /usb -v "$PWD:/repo:ro" busybox:1.36 sh /repo/tests/fuel-consumption/installer/run.sh`), and `fuel-consumption/shim/run.sh` runs the shims under qemu-arm against stand-in libraries (needs the m3-toolchain and `qemu-user`). The **Build** workflow runs these tests before it proposes new shims.
+- The **Build** workflow rebuilds shims with the pinned m3-toolchain and opens a PR when `jci-shims/` changes.
+- The **Release** workflow publishes a ready-to-copy USB drive ZIP. It runs when a tag `X.Y.Z` (release) or `X.Y.Z-suffix` (pre-release, e.g. `1.1.0-rc1`) is pushed on a commit that is on `main`: `git tag 1.1.0 && git push origin 1.1.0`. A tag pushed before the workflow existed can be released with **Actions > Release > Run workflow** and its name. The release name is the tag; the description lists the non-merge commit subjects since the previous tag. The workflow downloads the oem-aa-mod release set in `OEM_AA_MOD_TAG`, checks it against that release's `SHA256SUMS`, and adds its shims to `jci-shims/` and its `resources/` files to `config/`, each with an `.md5`.
 
 ## Disclaimer
 
