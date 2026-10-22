@@ -1,0 +1,18 @@
+List2Ctrl.prototype.handleControllerEvent = function(eventID)
+// omitted OEM lines
+                        this._tiltHoldTimeoutId = null;
+                        log.debug('Schedule autoscroll tier 1');
+                        this._tiltHoldTimeoutId = setTimeout(function() {                               // schedule first autoscroll tier
+                        //  this._beep('Long', 'Multicontroller');                                      // produce beep
+                            log.debug('Start autoscroll tier 1');
+                            this._handleMCDown();                                                       // do the first scroll down
+                            clearInterval(this._tiltHoldIntervalId);                                    // clear any redundand intervals
+// omitted OEM lines
+                        this._tiltHoldTimeoutId = null;
+                        log.debug('Schedule autoscroll tier 1');
+                        this._tiltHoldTimeoutId = setTimeout(function() {                             // schedule first autoscroll tier
+                        //  this._beep('Long', 'Multicontroller');                                    // produce beep
+                            log.debug('Start autoscroll tier 1');
+                            this._handleMCUp();                                                       // do the first scroll up
+                            clearInterval(this._tiltHoldIntervalId);                                  // clear any redundand intervals
+};
