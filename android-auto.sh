@@ -293,6 +293,8 @@ then
 
       patch_service "/jci/sm/${conf}" "jciAAPA" "libpatch-blmjciaapa.so"
       patch_service "/jci/sm/${conf}" "jcinavi" "libpatch-svcjcinavi.so"
+      # TODO patch if hud_display_language = english OR en OR 1-255
+      patch_service "/jci/sm/${conf}" "jciBLMSettings" "libpatch-svcjciblmsettings.so"
 
       if [ "${USE_PROTOCOL_V16}" = "true" ]
       then
@@ -309,6 +311,8 @@ then
     else
       copy_checked "${MYDIR}/jci-shims/libpatch-blmjciaapa.so" "/data_persist/oem-aa-mod/libpatch-blmjciaapa.so" "libpatch-blmjciaapa.so"
       copy_checked "${MYDIR}/jci-shims/libpatch-svcjcinavi.so" "/data_persist/oem-aa-mod/libpatch-svcjcinavi.so" "libpatch-svcjcinavi.so"
+      # TODO copy if hud_display_language = english OR en OR 1-255
+      copy_checked "${MYDIR}/jci-shims/libpatch-svcjciblmsettings.so" "/data_persist/oem-aa-mod/libpatch-svcjciblmsettings.so" "libpatch-svcjciblmsettings.so"
       if [ "${USE_PROTOCOL_V16}" = "true" ]
       then
         copy_checked "${MYDIR}/jci-shims/libpatch-aap_service.so" "/data_persist/oem-aa-mod/libpatch-aap_service.so" "libpatch-aap_service.so"
@@ -428,7 +432,7 @@ then
     done
 
     # --- Remove installed libraries and config ---
-    for file in libpatch-blmjciaapa.so libpatch-svcjcinavi.so libpatch-aap_service.so libpatch.conf
+    for file in libpatch-blmjciaapa.so libpatch-svcjcinavi.so libpatch-aap_service.so libpatch-svcjciblmsettings.so libpatch.conf
     do
       if ! rm -f "/data_persist/oem-aa-mod/${file}"
       then
