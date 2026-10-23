@@ -76,6 +76,24 @@ is_known_script() {
   esac
 }
 
+TERMINAL_FONT_SIZE=20
+
+# Opens Terminal with the stock /jci/scripts/run-terminal.sh, changing only its weston.ini line: the stock script
+# empties weston.ini, here it sets the font size instead. If that line is not found, the stock script runs unchanged.
+open_terminal() {
+  stock=/jci/scripts/run-terminal.sh
+  old='echo "" > /tmp/root/weston.ini'
+  new="{ echo '[terminal]'; echo 'font-size=${TERMINAL_FONT_SIZE}'; } > /tmp/root/weston.ini"
+
+  patched=$(sed "s|^${old}\$|${new}|" "$stock")
+  if [ -n "$patched" ] && [ "$patched" != "$(cat "$stock")" ]
+  then
+    sh -c "$patched"
+  else
+    sh "$stock"
+  fi
+}
+
 # --- Integrity of this script ---
 _want=$(md5_from "${SELF}.md5")
 if [ -z "$_want" ] || [ "$_want" != "$(md5_of "$SELF")" ]
@@ -115,7 +133,7 @@ while :; do
   if ask "Would you like to open Terminal?" "Open" "Next" "Exit"
   then
     dialog_kill
-    /jci/scripts/run-terminal.sh
+    open_terminal
     exit 0
   elif [ $? -eq 2 ]
   then
