@@ -87,12 +87,14 @@ fail() {
 copy_checked() {
   _copy_src=$1
   _copy_dst=$2
-  _copy_label=$3
+  # TODO check md5 sum
+  # TODO store a flag if a given file was copied succesfully, to know if proceed with patching in patch_service
   if [ ! -f "$_copy_src" ] || ! cp "$_copy_src" "$_copy_dst" || ! cmp -s "$_copy_src" "$_copy_dst"
   then
-    fail "Could not copy or verify ${_copy_label}"
+    fail "Could not copy or verify ${_copy_dst}"
     return 1
   fi
+  echo "Copied and verified ${_copy_dst}"
   return 0
 }
 
@@ -102,6 +104,7 @@ patch_service() {
   _patch_library=$3
   _patch_line="env_value=\"/data_persist/oem-aa-mod/${_patch_library}\""
 
+  # TODO patch only if copy_checked of _patch_library was successful, otherwise skip patching and log a warning
   if grep -qF "$_patch_line" "$_patch_conf"
   then
     echo "${_patch_library} already configured in ${_patch_conf}"
@@ -139,7 +142,7 @@ vbs_get()
       _reply=$(dbus-send --address="${_bus}" --print-reply --reply-timeout=2000 \
         --dest=com.jci.vbs.settings /com/jci/vbs/settings \
         com.jci.vbs.settings.GetCMUControlReq byte:${_t} uint32:0 2>&1)
-      echo "type ${_t} via ${_bus}: $(echo "${_reply}" | tr '\n' ' ')" >&2
+      echo "type ${_t}: answered by ${_bus}: $(echo "${_reply}" | tr '\n' ' ') on attempt $((_n + 1))/${TRIES}" >&2
       # The first byte in the reply is the requested control value.
       _v=$(echo "${_reply}" | awk '$1=="byte"{print $2; exit}')
       if [ -n "${_v}" ] && [ "${_v}" != "255" ]
@@ -154,8 +157,7 @@ vbs_get()
   return 1
 }
 
-HUD_INFO=""
-check_hud() {
+detect_hud() {
   HUD_EQUIP=$(vbs_get 13)
   HUD_TYPE=""
   [ "${HUD_EQUIP}" = "1" ] && HUD_TYPE=$(vbs_get 26)
@@ -164,38 +166,51 @@ check_hud() {
   if [ "${HUD_EQUIP}" = "1" ]
   then
     case "${HUD_TYPE}" in
-      2)
-        # WHUD_color
-        HUD_INFO="Detected supported HUD: WHUD_color.\nDisplaying street names should work."
-        return 0
-        ;;
-      0)
-        # CHUD_mono
-        HUD_INFO="Detected HUD: CHUD_mono.\nDisplaying street names will NOT work."
-        return 1
-        ;;
-      1)
-        # CHUD_color
-        HUD_INFO="Detected HUD: CHUD_color.\nDisplaying street names will NOT work."
-        return 1
-        ;;
-      "")
-        HUD_INFO="Could not detect HUD type and determine compatibility.\nDisplaying street names may NOT work."
-        return 1
-        ;;
-      *)
-        HUD_INFO="Detected unknown HUD type code: ${HUD_TYPE}.\nDisplaying street names may NOT work."
-        return 1
-        ;;
+      0) echo 'CHUD_mono' ;;
+      1) echo 'CHUD_color' ;;
+      2) echo 'WHUD_color' ;;
+      "") echo 'unknown' ;;
+      *) echo "$HUD_TYPE" ;;
     esac
   elif [ "${HUD_EQUIP}" = "0" ]
   then
-    HUD_INFO="This vehicle has no HUD.\nDisplaying navigation information will NOT work."
-    return 1
+    echo 'none'
   else
-    HUD_INFO="Could not detect whether a HUD is installed.\nDisplaying navigation information may NOT work."
-    return 1
+    echo 'unknown'
   fi
+}
+
+HUD_INFO=""
+
+check_hud() {
+  HUD_TYPE=$(detect_hud)
+  echo "Detected HUD type: ${HUD_TYPE}" >&2
+  case "${HUD_TYPE}" in
+    'WHUD_color')
+      HUD_INFO="Detected supported Windshield HUD.\nDisplaying street names should work."
+      return 0
+      ;;
+    'CHUD_mono')
+      HUD_INFO="Detected Combiner HUD (monochrome).\nDisplaying street names will NOT work."
+      return 1
+      ;;
+    'CHUD_color')
+      HUD_INFO="Detected Combiner HUD (color).\nDisplaying street names will NOT work."
+      return 1
+      ;;
+    'unknown')
+      HUD_INFO="Could not detect HUD type and determine compatibility.\nDisplaying street names may NOT work."
+      return 1
+      ;;
+    'none')
+      HUD_INFO="This vehicle has no HUD.\nDisplaying navigation information will NOT work."
+      return 1
+      ;;
+    *)
+      HUD_INFO="Detected HUD type code: ${HUD_TYPE}.\nDisplaying navigation information may NOT work."
+      return 1
+      ;;
+  esac
 }
 
 mkdir -p "${MYDIR}/logs"
@@ -307,15 +322,15 @@ then
     then
       fail "Could not create /data_persist/oem-aa-mod"
     else
-      copy_checked "${MYDIR}/jci-shims/libpatch-blmjciaapa.so" "/data_persist/oem-aa-mod/libpatch-blmjciaapa.so" "libpatch-blmjciaapa.so"
-      copy_checked "${MYDIR}/jci-shims/libpatch-svcjcinavi.so" "/data_persist/oem-aa-mod/libpatch-svcjcinavi.so" "libpatch-svcjcinavi.so"
+      copy_checked "${MYDIR}/jci-shims/libpatch-blmjciaapa.so" "/data_persist/oem-aa-mod/libpatch-blmjciaapa.so"
+      copy_checked "${MYDIR}/jci-shims/libpatch-svcjcinavi.so" "/data_persist/oem-aa-mod/libpatch-svcjcinavi.so"
       if [ "${USE_PROTOCOL_V16}" = "true" ]
       then
-        copy_checked "${MYDIR}/jci-shims/libpatch-aap_service.so" "/data_persist/oem-aa-mod/libpatch-aap_service.so" "libpatch-aap_service.so"
+        copy_checked "${MYDIR}/jci-shims/libpatch-aap_service.so" "/data_persist/oem-aa-mod/libpatch-aap_service.so"
       else
         echo "use_protocol_v1_6 is false, skipping libpatch-aap_service.so copy"
       fi
-      copy_checked "${MYDIR}/config/libpatch.conf" "/data_persist/oem-aa-mod/libpatch.conf" "libpatch.conf"
+      copy_checked "${MYDIR}/config/libpatch.conf" "/data_persist/oem-aa-mod/libpatch.conf"
       if ! chmod 0644 /data_persist/oem-aa-mod/libpatch-*.so
       then
         fail "Could not set permissions on installed libraries"
@@ -352,8 +367,9 @@ then
     done
 
     check_hud
+    _hud_status=$?
     echo "HUD check result: ${HUD_INFO}"
-    if [ "$?" -ne 0 ]
+    if [ "$_hud_status" -ne 0 ]
     then
       # Displaying street names in US region is independent of force_street_name config.
       confirm "$HUD_INFO"
