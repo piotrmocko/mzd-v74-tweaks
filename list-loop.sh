@@ -30,6 +30,10 @@ fi
 
 # --- Find the startup medium and keep diagnostics on USB ---
 # Walk up from the script directory so a subfolder works as well as the root.
+# Status uses RAM scratch space only; installation diagnostics stay on USB.
+if [ "$ACTION" = status ]; then
+  REPORT=$(mktemp -d /tmp/mzd-status.XXXXXX) || exit 1
+else
 MP=$MYDIR
 while [ "$MP" != / ] && ! grep -q " $MP " /proc/mounts
 do
@@ -39,6 +43,7 @@ mount -o rw,remount "$MP" || exit 1
 
 REPORT="$MYDIR/logs/$TWEAK-$(date +%Y%m%d-%H%M%S)-$$"
 mkdir -p "$REPORT" || exit 1
+fi
 : > "$REPORT/run.log" || exit 1
 
 # Preserve the caller's stdout for concise results; detailed output goes to USB.
@@ -72,6 +77,15 @@ fatal() {
 finish() {
   _code=$?
   trap - 0
+  if [ "${ACTION:-}" = status ]; then
+    if [ "$_code" = 0 ] && [ -n "${STATUS_RESULT:-}" ]; then
+      printf '%s\n' "$STATUS_RESULT" >&3
+    else
+      printf 'ERROR: %s\n' "${FAILURE:-Cannot determine status.}" >&4
+    fi
+    rm -rf "$REPORT"
+    exit "$_code"
+  fi
   case "${ACTION:-}:$_code" in
     install:130|install:143|uninstall:130|uninstall:143)
       FAILURE='Operation interrupted; changes may be incomplete.'
@@ -155,8 +169,12 @@ then
   fail 'Target file is missing or is a symbolic link.'
 fi
 
+if [ "$ACTION" = status ]; then
+  [ ! -e "$LOCK" ] || fail 'A tweak for this target is running; retry status later.'
+else
 mkdir "$LOCK" || fail 'Another tweak for this file is running. Restart the CMU if an earlier run was interrupted.'
 LOCKED=1
+fi
 
 
 # --- Exact original/installed context blocks and scoped AWK transform ---

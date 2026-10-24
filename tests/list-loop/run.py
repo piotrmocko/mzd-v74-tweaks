@@ -128,6 +128,9 @@ exec /bin/cat "$@"
         checks += 1
 
     run('status', text='uninstalled')
+    assert not events.exists(), 'Status must not remount storage or call sync.'
+    assert not (usb / 'logs').exists(), 'Status must not write USB reports.'
+
     run('install', text='install completed')
     assert app.read_bytes() == installed and backup.read_bytes() == original
     saved = backup.stat().st_mtime_ns
