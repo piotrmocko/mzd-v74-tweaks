@@ -11,11 +11,16 @@ ACTION=${1:-dialog}
 case "$ACTION" in dialog|status|install|uninstall|restore) ;; *) echo 'Usage: sh main-menu-loop.sh [install|uninstall|restore|status]' >&2; exit 1 ;; esac
 UI=0
 [ "$ACTION" = dialog ] && UI=1
+# Status uses RAM scratch space only; installation diagnostics stay on USB.
+if [ "$ACTION" = status ]; then
+  REPORT=$(mktemp -d /tmp/mzd-status.XXXXXX) || exit 1
+else
 MP=$MYDIR
 while [ "$MP" != / ] && ! grep -q " $MP " /proc/mounts; do MP=$(dirname "$MP"); done
 mount -o rw,remount "$MP" || exit 1
 REPORT="$MYDIR/logs/$TWEAK-$(date +%Y%m%d-%H%M%S)-$$"
 mkdir -p "$REPORT" || exit 1
+fi
 : > "$REPORT/run.log" || exit 1
 exec 3>&1
 exec 4>&2
@@ -42,6 +47,15 @@ fatal() {
 finish() {
   _code=$?
   trap - 0
+  if [ "${ACTION:-}" = status ]; then
+    if [ "$_code" = 0 ] && [ -n "${STATUS_RESULT:-}" ]; then
+      printf '%s\n' "$STATUS_RESULT" >&3
+    else
+      printf 'ERROR: %s\n' "${FAILURE:-Cannot determine status.}" >&4
+    fi
+    rm -rf "$REPORT"
+    exit "$_code"
+  fi
   case "${ACTION:-}:$_code" in
     install:130|install:143|uninstall:130|uninstall:143)
       FAILURE='Operation interrupted; changes may be incomplete.'
@@ -112,8 +126,12 @@ WANT=$(cut -c1-32 "${SELF}.md5" 2>/dev/null)
 [ -n "$WANT" ] && [ "$(hash "$SELF")" = "$WANT" ] || fail 'Installer checksum mismatch.'
 awk '$0 == "JCI_SW_VER=\"MAZ_CMU-150_74.00.324\"" {found=1} END {exit !found}' /jci/version.ini || fail 'This tweak requires firmware 74.00.324.'
 [ -f "$APP" ] && [ ! -L "$APP" ] || fail 'Target file is missing or is a symbolic link.'
+if [ "$ACTION" = status ]; then
+  [ ! -e "$LOCK" ] || fail 'A tweak for this target is running; retry status later.'
+else
 mkdir "$LOCK" || fail 'Another tweak for this file is running. Restart the CMU if an earlier run was interrupted.'
 LOCKED=1
+fi
 cat > "$REPORT/transform.awk" <<'TWEAK_PROGRAM_END'
 BEGIN {
     hunks = 1
