@@ -45,3 +45,13 @@ With a local complete OEM file, pass its path as the first argument to exercise
 the same installer against it. The committed excerpts are test data, not GUI
 payloads. Full-file compatibility and combination tests are also performed
 locally against the vehicle backup; complete GUI files are not shipped here.
+
+## Results for callers
+
+Capture stdout, stderr and the exit status separately. Exit `0` means success;
+`1` means an ordinary failure; `2` means a critical failure requiring manual
+intervention (for example failed rollback or failed system-state cleanup).
+Signals can return `130`/`143`. Never infer success from progress text alone.
+Final success/status output is emitted only after cleanup and result recording
+succeed. Errors include the USB report path where available. A critical failure
+must stop the launcher's remaining actions and must not offer an automatic reboot.

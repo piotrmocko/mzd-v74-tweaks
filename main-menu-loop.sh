@@ -18,27 +18,84 @@ REPORT="$MYDIR/logs/$TWEAK-$(date +%Y%m%d-%H%M%S)-$$"
 mkdir -p "$REPORT" || exit 1
 : > "$REPORT/run.log" || exit 1
 exec 3>&1
+exec 4>&2
 exec > "$REPORT/run.log" 2>&1
 ROOT_CHANGED=0
 WATCHDOG_CHANGED=0
 LOCKED=0
-REBOOT=0
+SUCCESS=''
+OFFER_REBOOT=0
+FAILURE=''
+CRITICAL=0
 LOCK=/tmp/mzd-MainMenuCtrl-tweak.lock
+# Public outcomes: 0 success, 1 ordinary failure, 2 critical failure.
+# Keep the final GUI/terminal result until cleanup has finished.
 fail() {
+  FAILURE=$*
   echo "ERROR: $*"
-  printf 'ERROR: %s\nReports: %s\n' "$*" "$REPORT" >&3
-  if [ "$UI" = 1 ]; then /jci/tools/jci-dialog --info --title="$TITLE" --text="$*\nSee USB logs." --no-cancel; fi
   exit 1
+}
+fatal() {
+  CRITICAL=1
+  fail "$@"
 }
 finish() {
   _code=$?
   trap - 0
-  if [ "$ROOT_CHANGED" = 1 ]; then mount -o ro,remount / || _code=1; fi
-  if [ "$WATCHDOG_CHANGED" = 1 ]; then echo 0 > /sys/class/gpio/Watchdog\ Disable/value || _code=1; fi
-  if [ "$LOCKED" = 1 ]; then rmdir "$LOCK" || _code=1; fi
-  printf 'exit_code=%s\n' "$_code" > "$REPORT/status.txt"
+  if [ "$ROOT_CHANGED" = 1 ] && ! mount -o ro,remount /
+  then
+    FAILURE="${FAILURE}${FAILURE:+
+}Could not restore the read-only system mount."
+    CRITICAL=1
+  fi
+  if [ "$WATCHDOG_CHANGED" = 1 ] && ! echo 0 > /sys/class/gpio/Watchdog\ Disable/value
+  then
+    FAILURE="${FAILURE}${FAILURE:+
+}Could not restore the watchdog state."
+    CRITICAL=1
+  fi
+  if [ "$LOCKED" = 1 ] && ! rmdir "$LOCK"
+  then
+    FAILURE="${FAILURE}${FAILURE:+
+}Could not release the tweak lock."
+    CRITICAL=1
+  fi
+  [ "$CRITICAL" = 1 ] && _code=2
+  if [ "$_code" != 0 ] && [ -z "$FAILURE" ]
+  then
+    FAILURE="Operation failed or was interrupted (exit $_code). Check the report before continuing."
+  fi
+  if ! printf 'exit_code=%s\n' "$_code" > "$REPORT/status.txt"
+  then
+    FAILURE="${FAILURE}${FAILURE:+
+}Cannot save the final result. Check USB storage."
+    [ "$_code" = 0 ] && _code=1
+  fi
   sync
-  if [ "$_code" = 0 ] && [ "$REBOOT" = 1 ]; then reboot; fi
+  if [ "$_code" != 0 ]
+  then
+    [ "$CRITICAL" = 1 ] && FAILURE="$FAILURE
+Do NOT reboot the CMU. Manual intervention is required."
+    printf 'ERROR: %s\nReports: %s\n' "$FAILURE" "$REPORT" >&4
+    if [ "$UI" = 1 ]; then /jci/tools/jci-dialog --info --title="$TITLE" --text="$FAILURE
+See USB logs." --no-cancel; fi
+  elif [ -n "$SUCCESS" ]
+  then
+    printf '%s\nReports: %s\n' "$SUCCESS" "$REPORT" >&3
+    if [ "$UI" = 1 ]; then
+      killall -q jci-dialog
+      if [ "$OFFER_REBOOT" = 0 ]; then
+        /jci/tools/jci-dialog --info --title="$TITLE" --text="$SUCCESS" --no-cancel
+      elif /jci/tools/jci-dialog --question --title="$TITLE" --text="$SUCCESS
+Reboot to reload the GUI." --ok-label='Reboot now' --cancel-label='Reboot later'; then
+        reboot
+      fi
+    fi
+  fi
+  if [ "$_code" = 0 ] && [ -n "${STATUS_RESULT:-}" ]
+  then
+    printf '%s\n' "$STATUS_RESULT" >&3
+  fi
   exit "$_code"
 }
 trap finish 0
@@ -132,7 +189,7 @@ TWEAK_PROGRAM_END
 transform() { awk -v action="$1" -f "$REPORT/transform.awk" "$2"; }
 STATE=$(transform status "$APP") || fail 'Unknown or partially modified patch locations. Nothing changed.'
 echo "state=$STATE"
-if [ "$ACTION" = status ]; then printf '%s\n' "$STATE" >&3; exit 0; fi
+if [ "$ACTION" = status ]; then STATUS_RESULT=$STATE; exit 0; fi
 if [ "$UI" = 1 ]; then
   killall -q jci-dialog
   if /jci/tools/jci-dialog --3-button-dialog --title="$TITLE" --text='Wrap between the first and last main-menu icons.\nWhat would you like to do?' --ok-label=Install --cancel-label=Uninstall --button3-label=Exit; then
@@ -145,7 +202,7 @@ if [ "$UI" = 1 ]; then
 fi
 [ "$ACTION" = restore ] && ACTION=uninstall
 if { [ "$ACTION" = install ] && [ "$STATE" = installed ]; } || { [ "$ACTION" = uninstall ] && [ "$STATE" = uninstalled ]; }; then
-  printf 'Requested setting is already present.\n' >&3
+  SUCCESS='Requested setting is already present.'
   exit 0
 fi
 BACKUP="${APP}.org"
@@ -184,14 +241,9 @@ cat "$REPORT/desired.js" > "$APP"; sync
 [ "$(hash "$APP")" = "$DESIRED" ] || { cat "$REPORT/desired.js" > "$APP"; sync; }
 if [ "$(hash "$APP")" != "$DESIRED" ]; then
   cat "$REPORT/before.js" > "$APP"; sync
-  [ "$(hash "$APP")" = "$BEFORE" ] || fail 'Write AND rollback failed. Do NOT reboot the CMU.'
+  [ "$(hash "$APP")" = "$BEFORE" ] || fatal 'Write AND rollback failed. Do NOT reboot the CMU.'
   fail 'Write failed; the complete previous file was restored.'
 fi
-printf '%s completed. Other changes were preserved.\nReports: %s\n' "$ACTION" "$REPORT" >&3
-if [ "$UI" = 1 ]; then
-  killall -q jci-dialog
-  if /jci/tools/jci-dialog --question --title="$TITLE" --text='Completed. Reboot to reload the GUI.' --ok-label='Reboot now' --cancel-label='Reboot later'; then
-    REBOOT=1
-  fi
-fi
+OFFER_REBOOT=1
+SUCCESS="$ACTION completed. Other changes were preserved."
 exit 0
