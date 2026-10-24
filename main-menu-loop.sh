@@ -42,6 +42,11 @@ fatal() {
 finish() {
   _code=$?
   trap - 0
+  case "${ACTION:-}:$_code" in
+    install:130|install:143|uninstall:130|uninstall:143)
+      FAILURE='Operation interrupted; changes may be incomplete.'
+      CRITICAL=1 ;;
+  esac
   if [ "$ROOT_CHANGED" = 1 ] && ! mount -o ro,remount /
   then
     FAILURE="${FAILURE}${FAILURE:+
@@ -105,7 +110,7 @@ hash() { md5sum "$1" | cut -d' ' -f1; }
 echo "$TITLE / action=$ACTION"
 WANT=$(cut -c1-32 "${SELF}.md5" 2>/dev/null)
 [ -n "$WANT" ] && [ "$(hash "$SELF")" = "$WANT" ] || fail 'Installer checksum mismatch.'
-grep -q '^JCI_SW_VER="MAZ_CMU-150_74\.00\.324"$' /jci/version.ini || fail 'This tweak requires firmware 74.00.324.'
+awk '$0 == "JCI_SW_VER=\"MAZ_CMU-150_74.00.324\"" {found=1} END {exit !found}' /jci/version.ini || fail 'This tweak requires firmware 74.00.324.'
 [ -f "$APP" ] && [ ! -L "$APP" ] || fail 'Target file is missing or is a symbolic link.'
 mkdir "$LOCK" || fail 'Another tweak for this file is running. Restart the CMU if an earlier run was interrupted.'
 LOCKED=1

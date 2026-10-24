@@ -63,6 +63,13 @@ trap finish 0
         self.assertEqual(result.stderr, '')
         self.assertEqual(recorded, 'exit_code=0\n')
 
+    def test_interrupted_mutation_is_critical(self):
+        result, recorded = self.run_case('ACTION=install; exit 143')
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, '')
+        self.assertIn('Do NOT reboot', result.stderr)
+        self.assertEqual(recorded, 'exit_code=2\n')
+
     def test_safe_failure(self):
         result, recorded = self.run_case("FAIL 'Write failed; the previous file was restored.'")
         self.assertEqual(result.returncode, 1)

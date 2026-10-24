@@ -55,3 +55,14 @@ Signals can return `130`/`143`. Never infer success from progress text alone.
 Final success/status output is emitted only after cleanup and result recording
 succeed. Errors include the USB report path where available. A critical failure
 must stop the launcher's remaining actions and must not offer an automatic reboot.
+
+
+## Result contract
+
+Capture stdout, stderr and the exit code separately. Exit 0 means success,
+1 an ordinary failure, and 2 a critical failure requiring manual intervention.
+A critical failure must stop subsequent actions and must not offer a reboot.
+Final success/status output is emitted only after cleanup and result recording.
+Interrupted install/uninstall actions are treated as critical because their
+changes may be incomplete. Exact firmware/lock checks use CMU-compatible awk;
+BusyBox grep on this CMU does not support -x.
