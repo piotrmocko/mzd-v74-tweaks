@@ -1,6 +1,7 @@
 // Execute the actual inserted boundary checks, not a second implementation.
 const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
-const source=fs.readFileSync(path.join(__dirname,'../../list-loop.sh'),'utf8');
+const source=fs.readFileSync(path.join(__dirname,'../../list-loop.sh'),'utf8')
+  .split("<<'TWEAK_PROGRAM_END'\n")[1].split('\nTWEAK_PROGRAM_END')[0];
 const groups={};
 for(const line of source.split('\n')){
   const m=line.match(/^    block\[(\d+),1,(\d+)\] = (.*)$/);
