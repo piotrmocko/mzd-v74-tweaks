@@ -72,7 +72,7 @@ esac
     saved=app.with_name(app.name+'.org').stat().st_mtime_ns
     run('install',contains='already present');assert app.with_name(app.name+'.org').stat().st_mtime_ns==saved
     (service/'enabled').unlink();run('status',1,'enabled marker');write(service/'enabled','enabled\n')
-    saved_payload=(service/'service.sh').read_bytes();(service/'service.sh').unlink();run('status',1,'service files differ');(service/'service.sh').write_bytes(saved_payload)
+    saved_payload=(service/'service.sh').read_bytes();(service/'service.sh').unlink();run('status',1,'payload is missing or changed');(service/'service.sh').write_bytes(saved_payload)
     run('uninstall',contains='uninstall completed');assert app.read_bytes()==original and not service.exists()
     assert run('status').stdout=='uninstalled\n'
     write(tmp/'fail-start','yes');run('install',1,'did not start');assert app.read_bytes()==original;(tmp/'fail-start').unlink();run('uninstall')

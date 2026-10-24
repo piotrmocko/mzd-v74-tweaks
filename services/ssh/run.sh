@@ -85,7 +85,7 @@ mzd_report_message() {
 
 # Before begin, errors use stderr only. During an operation they also reach USB.
 mzd_fail() {
-  if [ -n "${MZD_REPORT:-}" ]
+  if [ "${ACTION:-}" != status ] && [ -n "${MZD_REPORT:-}" ]
   then
     printf 'ERROR: %s\n' "$*"
     printf 'ERROR: %s\nReports: %s\n' "$*" "$MZD_REPORT" >&4
@@ -579,6 +579,39 @@ ssh_complete() {
     fi
 }
 
+# Read-only status: scratch copies stay in RAM; never open USB reports,
+# remount storage, change the watchdog, acquire locks or flush global writes.
+mzd_read_status() (
+    [ ! -e "$LOCK" ] || mzd_fail 'A tweak for this target is running; retry status later.'
+    mzd_require_assets "$SELF" "$HERE/manifest.json" || exit 1
+    mzd_validate_firmware "$FIRMWARE" || exit 1
+    MZD_REPORT=$(mktemp -d /tmp/mzd-status.XXXXXX) || exit 1
+    trap 'rm -rf "$MZD_REPORT"' 0
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    STATUS_PATCH=$PATCH_FILE
+
+    mzd_patch_prepare "$APP" "$STATUS_PATCH" "$ORIGINAL" "$MZD_REPORT/target" || exit 1
+    state=$(mzd_patch_state "$MZD_REPORT/target") || exit 1
+    if [ "$state" = installed ]; then
+        ssh_payload_ok || mzd_fail 'SSH hook is installed but its payload is missing or changed.'
+        [ -f "$SERVICE/enabled" ] && [ ! -L "$SERVICE/enabled" ] &&
+            mzd_line_is enabled "$SERVICE/enabled" ||
+            mzd_fail 'SSH hook is installed but its enabled marker is missing or invalid.'
+    elif [ -e "$SERVICE/enabled" ] || [ -L "$SERVICE/enabled" ]; then
+        mzd_fail 'SSH payload is enabled but its startup hook is missing.'
+    fi
+    # Refuse a result if an installer changed the target during the probe.
+    [ ! -e "$LOCK" ] && cmp -s "$APP" "$MZD_REPORT/target/before.data" ||
+        mzd_fail 'Target changed during status inspection; retry status.'
+    printf '%s\n' "$state"
+)
+
+if [ "$ACTION" = status ]; then
+    mzd_read_status
+    exit $?
+fi
+
 # --- Execution flow -------------------------------------------------------
 # Open USB reports and register cleanup before acquiring a lock. Cleanup restores
 # only the mount/watchdog state changed by this invocation, including on failure.
@@ -594,23 +627,7 @@ mzd_system_lock "$LOCK" || exit 1
 CONTEXT="$MZD_REPORT/target"
 mzd_patch_prepare "$APP" "$PATCH_FILE" "$ORIGINAL" "$CONTEXT" || exit 1
 STATE=$(mzd_patch_state "$CONTEXT") || exit 1
-if [ "$ACTION" = status ]
-then
-    # Installed means a complete persistent installation, not merely its hook.
-    # A stopped runtime service does not by itself mean it is uninstalled.
-    if [ "$STATE" = installed ]
-    then
-        ssh_prepare || exit $?
-        [ -f "$SERVICE/enabled" ] && [ ! -L "$SERVICE/enabled" ] &&
-            mzd_line_is enabled "$SERVICE/enabled" ||
-            mzd_fail 'SSH hook is installed but its enabled marker is missing or invalid.'
-    elif [ -e "$SERVICE/enabled" ] || [ -L "$SERVICE/enabled" ]
-    then
-        mzd_fail 'SSH payload is enabled but its startup hook is missing.'
-    fi
-    MZD_STATUS=$STATE
-    exit 0
-fi
+
 
 # Repeated install/uninstall is a successful no-op for the patch itself.
 NO_CHANGE=0
