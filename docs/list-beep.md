@@ -45,3 +45,14 @@ With a local complete OEM file, pass its path as the first argument to exercise
 the same installer against it. The committed excerpts are test data, not GUI
 payloads. Full-file compatibility and combination tests are also performed
 locally against the vehicle backup; complete GUI files are not shipped here.
+
+
+## Result contract
+
+Capture stdout, stderr and the exit code separately. Exit 0 means success,
+1 an ordinary failure, and 2 a critical failure requiring manual intervention.
+A critical failure must stop subsequent actions and must not offer a reboot.
+Final success/status output is emitted only after cleanup and result recording.
+Interrupted install/uninstall actions are treated as critical because their
+changes may be incomplete. Exact firmware/lock checks use CMU-compatible awk;
+BusyBox grep on this CMU does not support -x.

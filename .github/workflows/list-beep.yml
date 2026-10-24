@@ -13,3 +13,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Targeted change, rollback and isolation tests
         run: python3 tests/list-beep/run.py
+      - name: Final result and critical cleanup contract
+        run: python3 tests/list-beep/test_results.py
