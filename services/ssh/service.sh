@@ -126,7 +126,7 @@ trap 'exit 0' INT TERM
 LOG=/dev/null
 for U in "${2:-}" /tmp/mnt/sda1 /tmp/mnt/sdb1 /tmp/mnt/sdc1 /tmp/mnt/sdd1; do
     [ -n "$U" ] || continue
-    if [ -f "$U/services/ssh/usb-log-marker.txt" ] && line_is 'MZD-AIO-SSH-v1' "$U/services/ssh/usb-log-marker.txt"; then
+    if [ -f "$U/diffpatch-ssh-log-marker.txt" ] && line_is 'MZD-AIO-SSH-v1' "$U/diffpatch-ssh-log-marker.txt"; then
         D="$U/reports/ssh-$(date +%Y%m%d-%H%M%S)-$$"
         if mkdir -p "$D" && : > "$D/run.log"; then LOG="$D/run.log"; break; fi
     fi

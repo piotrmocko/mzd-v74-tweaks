@@ -30,7 +30,8 @@ with tempfile.TemporaryDirectory(prefix='mzd-release-check-') as folder:
     with zipfile.ZipFile(archive) as package:
         for file in ['ssh.sh', 'services/ssh/service.sh', 'services/ssh/sshd_config',
                      'services/ssh/password.hash', 'services/ssh/usb-log-marker.txt',
-                     'jci-org/stage_wifi.sh.org']:
+                     'jci-org/stage_wifi.sh.org', 'services/ssh/run.sh',
+                     'services/ssh/manifest.json', 'services/ssh/change.patch']:
             content = package.read(file)
             assert content == (repo / file).read_bytes(), file
             assert hashlib.md5(content).hexdigest() == package.read(file + '.md5').decode().split()[0], file

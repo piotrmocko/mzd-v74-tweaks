@@ -1,117 +1,85 @@
-"""Isolated dialog/installer tests; no real mounts, reboot or device files."""
-import hashlib
-import os
+"""Isolated corrected SSH worker tests; no real mounts, SSH or vehicle access."""
+import hashlib,os,re,shlex,shutil,subprocess,tempfile
 from pathlib import Path
-import re
-import shutil
-import subprocess
-import sys
-import tempfile
-
-REPO = Path(__file__).resolve().parents[2]
-SHELL = sys.argv[1] if len(sys.argv) > 1 else ('C:/Program Files/Git/bin/bash.exe' if os.name == 'nt' else '/bin/sh')
-
-def bp(path):
-    s = Path(path).resolve().as_posix()
-    return '/' + s[0].lower() + s[2:] if len(s) > 1 and s[1] == ':' else s
-
-def write(path, text):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding='utf-8', newline='\n')
-    path.chmod(0o755)
-
-def md5(data):
-    return hashlib.md5(data).hexdigest()
-
-checks = 0
-with tempfile.TemporaryDirectory(prefix='mzd-navigation-') as folder:
-    tmp = Path(folder)
-    usb = tmp / 'USB stick'
-    usb.mkdir()
-    for d in ['jci-org', 'jci-mods']:
-        shutil.copytree(REPO / d, usb / d)
-    cmu, tools = tmp / 'jci', tmp / 'bin'
-    tools.mkdir()
-    answers, events = tmp / 'answers', tmp / 'events'
-    write(tmp / 'mounts', f'mock {bp(usb)} vfat rw 0 0\n')
-    write(tmp / 'gpio', '')
-    write(tools / 'mount', '#!/bin/sh\nexit 0\n')
-    for name in ['killall', 'hwclock', 'sync', 'reboot']:
-        write(tools / name, f'#!/bin/sh\necho {name} >> "{bp(events)}"\n')
-    write(cmu / 'tools/jci-dialog', f'''#!/bin/sh
-case "$*" in
-  *--3-button-dialog*) fallback=2 ;;
-  *--question*) fallback=1 ;;
-  *) exit 0 ;;
-esac
-set -- $(/bin/cat "{bp(answers)}")
-a=${{1:-$fallback}}
-[ "$#" -gt 0 ] && shift
-printf '%s\\n' "$*" > "{bp(answers)}"
-exit "$a"
+REPO=Path(__file__).resolve().parents[2]
+SHELL='C:/Program Files/Git/bin/bash.exe' if os.name=='nt' else '/bin/sh'
+def bp(p):
+    s=Path(p).resolve().as_posix();return '/'+s[0].lower()+s[2:] if len(s)>1 and s[1]==':' else s
+def write(p,text):
+    p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text,encoding='utf-8',newline='\n');p.chmod(0o755)
+def checksum(p):write(p.with_name(p.name+'.md5'),hashlib.md5(p.read_bytes()).hexdigest()+'  '+p.name+'\n')
+checks=0
+with tempfile.TemporaryDirectory(prefix='mzd-ssh-worker-') as folder:
+    tmp=Path(folder);usb=tmp/'usb';payload=usb/'services/ssh';shutil.copytree(REPO/'services/ssh',payload)
+    bins=tmp/'bin';bins.mkdir();app=tmp/'stage_wifi.sh';version=tmp/'version.ini';mounts=tmp/'mounts';gpio=tmp/'gpio';lock=tmp/'lock';resources=tmp/'resources';resources.mkdir();service=resources/'ssh'
+    original=(REPO/'jci-org/stage_wifi.sh.org').read_bytes();app.write_bytes(original)
+    write(version,'JCI_SW_VER="MAZ_CMU-150_74.00.324"\n');write(gpio,'0\n')
+    def reset_mounts():write(mounts,'mock '+bp(usb)+' vfat rw 0 0\nroot / relfs ro 0 0\nmock '+bp(resources)+' relfs ro 0 0\n')
+    reset_mounts()
+    write(bins/'mount',f'''#!/bin/sh
+if [ "$3" = / ] && [ "$2" = ro,remount ] && [ -f '{bp(tmp/'fail-cleanup')}' ]; then exit 1; fi
+awk -v target="$3" -v option="$2" '$2==target {{$4=(option=="rw,remount"?"rw":"ro")}} {{print}}' '{bp(mounts)}' > '{bp(tmp/'mounts-new')}'
+mv '{bp(tmp/'mounts-new')}' '{bp(mounts)}'
 ''')
-    for script in ['ssh.sh']:
-        text = (REPO / script).read_text(encoding='utf-8')
-        text = text.replace('#!/bin/sh\n', '#!/bin/sh\nPATH="' + bp(tools) + ':/usr/bin:/bin"\nexport PATH\n', 1)
-        text = text.replace('/jci/', bp(cmu) + '/')
-        text = text.replace('/proc/mounts', bp(tmp / 'mounts'))
-        text = text.replace('/tmp/mnt/resources', bp(tmp / 'resources'))
-        text = text.replace('/sys/class/gpio/Watchdog\\ Disable/value', bp(tmp / 'gpio'))
-        write(usb / script, text)
-        write(usb / (script + '.md5'), md5((usb / script).read_bytes()) + '  ' + script + '\n')
-    env = dict(os.environ, PATH=bp(tools) + ':/usr/bin:/bin')
-    write(cmu / 'version.ini', 'JCI_SW_VER="MAZ_CMU-150_74.00.324"\n')
-    # Exercise the native-style SSH installer with a stand-in supervisor.
-    source = usb / 'services/ssh'
-    shutil.copytree(REPO / 'services/ssh', source)
-    mock_service = """#!/bin/sh
+    # A CMU-compatible grep stand-in deliberately rejects the unsupported flag.
+    write(bins/'grep','''#!/bin/sh
+for option in "$@"; do case "$option" in -*x*) echo 'CMU grep has no -x' >&2; exit 2 ;; esac; done
+exec /usr/bin/grep "$@"
+''')
+    for name in ['sync','killall','hwclock']:write(bins/name,'#!/bin/sh\nexit 0\n')
+    write(bins/'sleep','#!/bin/sh\nexec /bin/sleep 0.02\n')
+    write(bins/'cat',f'''#!/bin/sh
+case "$1" in
+ */install/target.data|*/uninstall/target.data) if [ -f '{bp(tmp/'fail-write')}' ]; then printf corrupt; exit 0; fi ;;
+ */before.data) if [ -f '{bp(tmp/'fail-rollback')}' ]; then printf corrupt; exit 0; fi ;;
+esac
+exec /bin/cat "$@"
+''')
+    mock='''#!/bin/sh
 D=$(CDPATH= cd "$(dirname "$0")" && pwd)
 case "$1" in
-check) [ ! -f "FOREIGN" ] || { echo 'Port 22 is already in use'; exit 1; } ;;
-boot) [ ! -f "FAIL_START" ] && [ -f "$D/enabled" ] && echo running > "$D/running" ;;
+check) [ ! -f 'FOREIGN' ] ;;
+boot) [ ! -f 'FAIL_START' ] && [ -f "$D/enabled" ] && touch "$D/running" ;;
 status) [ -f "$D/running" ] ;;
-stop) rm -f "$D/running" ;;
+stop) [ ! -f 'FAIL_STOP' ] || exit 1; rm -f "$D/running" ;;
 *) exit 1 ;;
 esac
-""".replace('FOREIGN', bp(tmp / 'foreign-port')).replace('FAIL_START', bp(tmp / 'fail-start'))
-    write(source / 'service.sh', mock_service)
-    write(source / 'service.sh.md5', md5((source / 'service.sh').read_bytes()) + '  service.sh\n')
-    stage = cmu / 'scripts/stage_wifi.sh'
-    stage.parent.mkdir(parents=True)
-    stage.write_bytes(b'#!/bin/sh\n\n')
-    service = tmp / 'resources/mzd-v74-tweaks/ssh'
-    def ssh_run(reply, code=0):
+'''.replace('FOREIGN',bp(tmp/'foreign-port')).replace('FAIL_START',bp(tmp/'fail-start')).replace('FAIL_STOP',bp(tmp/'fail-stop'))
+    write(payload/'service.sh',mock);checksum(payload/'service.sh')
+    worker=payload/'run.sh';source=worker.read_text(encoding='utf-8')
+    source=source.replace('#!/bin/sh\n','#!/bin/sh\nPATH='+shlex.quote(bp(bins)+':/usr/bin:/bin')+'\nexport PATH\n',1)
+    source=re.sub(r'^APP=.*$','APP='+shlex.quote(bp(app)),source,flags=re.M)
+    source=re.sub(r'^SERVICE=.*$','SERVICE='+shlex.quote(bp(service)),source,flags=re.M)
+    source=re.sub(r'^LOCK=.*$','LOCK='+shlex.quote(bp(lock)),source,flags=re.M)
+    source=source.replace('/jci/version.ini',bp(version)).replace('/proc/mounts',bp(mounts)).replace('/sys/class/gpio/Watchdog\\ Disable/value',bp(gpio)).replace('/tmp/mnt/resources',bp(resources))
+    write(worker,source);checksum(worker)
+    entry=usb/'ssh.sh';shutil.copyfile(REPO/'ssh.sh',entry);checksum(entry)
+    env=dict(os.environ,PATH=bp(bins)+':/usr/bin:/bin')
+    def run(action,code=0,contains='',restored=True):
         global checks
-        write(answers, reply); write(events, '')
-        result = subprocess.run([SHELL, bp(usb / 'ssh.sh')], env=env, capture_output=True, timeout=20)
-        assert result.returncode == code, result.stderr
-        checks += 1
-        return (usb / 'logs/ssh.log').read_text(encoding='utf-8')
-    write(tmp / 'foreign-port', 'yes')
-    assert 'Prerequisite check failed' in ssh_run('0', 1)
-    assert stage.read_bytes() == b'#!/bin/sh\n\n' and not service.exists()
-    (tmp / 'foreign-port').unlink()
-    assert 'Enabled on port 22' in ssh_run('0 1')
-    assert (service / 'enabled').exists() and b'service.sh boot' in stage.read_bytes()
-    assert stage.with_name(stage.name + '.org').read_bytes() == b'#!/bin/sh\n\n'
-    assert 'Enabled on port 22' in ssh_run('0 1')
-    assert 'Uninstalled' in ssh_run('1 1')
-    assert stage.read_bytes() == b'#!/bin/sh\n\n' and not service.exists()
-    assert 'Not installed' in ssh_run('1')
-    write(tmp / 'fail-start', 'yes')
-    assert 'runtime changes were reverted' in ssh_run('0', 1)
-    assert stage.read_bytes() == b'#!/bin/sh\n\n' and not (service / 'enabled').exists()
-    (tmp / 'fail-start').unlink()
-    assert 'Uninstalled' in ssh_run('1 1')
-    stage.write_bytes(b'foreign startup script\n')
-    assert 'not a known original' in ssh_run('0', 1)
-    assert stage.read_bytes() == b'foreign startup script\n'
-    stage.write_bytes(b'#!/bin/sh\n\n')
-    stage.with_name(stage.name + '.org').write_bytes(b'bad backup')
-    assert 'backup is not the known original' in ssh_run('0', 1)
-    stage.with_name(stage.name + '.org').unlink()
-    write(source / 'service.sh', mock_service + '# damaged\n')
-    assert 'missing or damaged' in ssh_run('0', 1)
-    assert not service.exists() and stage.read_bytes() == b'#!/bin/sh\n\n'
-
-print(f'Passed {checks} isolated SSH installer runs.')
+        r=subprocess.run([SHELL,bp(entry),action],capture_output=True,text=True,env=env,timeout=20)
+        assert r.returncode==code,(action,r.returncode,r.stdout,r.stderr)
+        assert contains in r.stdout+r.stderr,(action,r.stdout,r.stderr)
+        assert not lock.exists()
+        assert gpio.read_text().strip()=='0'
+        if restored:assert 'root / relfs ro ' in mounts.read_text() and bp(resources)+' relfs ro ' in mounts.read_text()
+        if code:assert 'completed.' not in r.stdout,(action,r.stdout)
+        checks+=1;return r
+    assert run('status').stdout=='uninstalled\n'
+    write(tmp/'foreign-port','yes');run('install',1,'prerequisites failed');assert app.read_bytes()==original;(tmp/'foreign-port').unlink()
+    run('install',contains='install completed');assert app.read_bytes()!=original and (service/'enabled').is_file()
+    assert run('status').stdout=='installed\n'
+    saved=app.with_name(app.name+'.org').stat().st_mtime_ns
+    run('install',contains='already present');assert app.with_name(app.name+'.org').stat().st_mtime_ns==saved
+    (service/'enabled').unlink();run('status',1,'enabled marker');write(service/'enabled','enabled\n')
+    saved_payload=(service/'service.sh').read_bytes();(service/'service.sh').unlink();run('status',1,'service files differ');(service/'service.sh').write_bytes(saved_payload)
+    run('uninstall',contains='uninstall completed');assert app.read_bytes()==original and not service.exists()
+    assert run('status').stdout=='uninstalled\n'
+    write(tmp/'fail-start','yes');run('install',1,'did not start');assert app.read_bytes()==original;(tmp/'fail-start').unlink();run('uninstall')
+    run('install');write(tmp/'fail-stop','yes');run('uninstall',2,'Do NOT reboot');(tmp/'fail-stop').unlink();run('uninstall')
+    write(tmp/'fail-write','yes');run('install',1,'previous file was restored');assert app.read_bytes()==original
+    write(tmp/'fail-rollback','yes');run('install',2,'rollback failed');assert app.read_bytes()!=original
+    (tmp/'fail-write').unlink();(tmp/'fail-rollback').unlink();app.write_bytes(original)
+    write(tmp/'fail-cleanup','yes');run('install',2,'Cleanup failed',False);(tmp/'fail-cleanup').unlink();reset_mounts();run('uninstall')
+    app.with_name(app.name+'.org').write_bytes(b'bad backup');run('install',1,'known OEM original');assert app.read_bytes()==original
+print('Passed',checks,'isolated SSH worker checks (including payload status, rollback severity, cleanup and native-grep compatibility).')

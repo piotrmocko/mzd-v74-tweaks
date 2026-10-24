@@ -17,3 +17,5 @@ jobs:
         run: python3 tests/ssh-service/run.py
       - name: Verify the release copy recipe includes all SSH files
         run: python3 tests/ssh-installer/check-package.py
+      - name: Worker result and critical cleanup contract
+        run: python3 tests/ssh-installer/test_results.py
