@@ -15,7 +15,7 @@ REPO = Path(__file__).resolve().parents[2]
 SHELL = 'C:/Program Files/Git/bin/bash.exe' if os.name == 'nt' else '/bin/sh'
 EXPECTED = {'list-beep': 'bb290d22840f82b1be14400ddb41f1b0',
             'shorter-delay': '1b69a54d01213cc7fbf1261ff4ab114d',
-            'list-loop': '4134ff5877b799472ee8244300205a5c',
+            'list-loop': '437e1e194241b7328b5bdcadedbde48d',
             'main-menu-loop': 'ae272c9befc1350b93f23511568f13c7'}
 
 def bp(path):
@@ -53,7 +53,7 @@ with tempfile.TemporaryDirectory(prefix='mzd-' + ID + '-') as folder:
     assert transform('status', original) == b'uninstalled\n'
     installed = transform('install', original)
     if len(sys.argv) > 1:
-        assert md5(installed) == EXPECTED[ID], 'Full OEM result differs from the previously verified AIO port.'
+        assert md5(installed) == EXPECTED[ID], 'Full OEM result differs from the reviewed corrected patch.'
     else:
         assert installed == Path(__file__).with_name('installed.txt').read_bytes()
     assert transform('status', installed) == b'installed\n'
@@ -133,6 +133,15 @@ exec /bin/cat "$@"
     saved = backup.stat().st_mtime_ns
     run('install', text='already present')
     assert backup.stat().st_mtime_ns == saved
+    # A previous installation remains removable after updating the USB files.
+    legacy = Path(__file__).with_name('legacy-installed.txt').read_bytes()
+    if len(sys.argv) == 1:
+        app.write_bytes(legacy)
+        run('status', text='installed')
+        run('install', 1, 'Legacy List Loop is installed')
+        run('uninstall', text='uninstall completed')
+        assert app.read_bytes() == original
+        run('install', text='install completed')
     app.write_bytes(prefix + installed + suffix)
     run('uninstall', text='uninstall completed')
     assert app.read_bytes() == foreign and backup.read_bytes() == original

@@ -15,14 +15,21 @@ List2Ctrl.prototype._handleMCCW = function()
 
             if (this._getFocussedIndex() == currentFocussedIndex) //didn't move
             {
-                if (this.dataList && this.dataList.items)
+                if (this.dataList && this.dataList.items && this.dataList.itemCount > 0)
                 {
-                    var index = 0;
-                    while (index < this.dataList.items.length && this.dataList.items[index].disabled) index++;
-                    if (index < this.dataList.items.length)
+                    // An unchanged focus can also mean normal scrolling.
+                    // Wrap only if no selectable item remains in this direction.
+                    var nextIndex = currentFocussedIndex + 1;
+                    while (nextIndex < this.dataList.itemCount && this.dataList.items[nextIndex] && this.dataList.items[nextIndex].disabled) nextIndex++;
+                    if (nextIndex >= this.dataList.itemCount)
                     {
-                        this._manageFocus(index);
-                        return 'consumed';
+                        var index = 0;
+                        while (index < this.dataList.itemCount && this.dataList.items[index] && this.dataList.items[index].disabled) index++;
+                        if (index < this.dataList.itemCount && this.dataList.items[index] && !this.dataList.items[index].disabled)
+                        {
+                            this._manageFocus(index);
+                            return 'consumed';
+                        }
                     }
                 }
             }
@@ -47,14 +54,21 @@ List2Ctrl.prototype._handleMCCCW = function()
 
             if (this._getFocussedIndex() == currentFocussedIndex) //didn't move
             {
-                if (this.dataList && this.dataList.items)
+                if (this.dataList && this.dataList.items && this.dataList.itemCount > 0)
                 {
-                    var index = this.dataList.items.length - 1;
-                    while (index >= 0 && this.dataList.items[index].disabled) index--;
-                    if (index >= 0)
+                    // An unchanged focus can also mean normal scrolling.
+                    // Wrap only if no selectable item remains in this direction.
+                    var nextIndex = currentFocussedIndex - 1;
+                    while (nextIndex >= 0 && this.dataList.items[nextIndex] && this.dataList.items[nextIndex].disabled) nextIndex--;
+                    if (nextIndex < 0)
                     {
-                        this._manageFocus(index);
-                        return 'consumed';
+                        var index = this.dataList.itemCount - 1;
+                        while (index >= 0 && this.dataList.items[index] && this.dataList.items[index].disabled) index--;
+                        if (index >= 0 && this.dataList.items[index] && !this.dataList.items[index].disabled)
+                        {
+                            this._manageFocus(index);
+                            return 'consumed';
+                        }
                     }
                 }
             }
@@ -79,14 +93,21 @@ List2Ctrl.prototype._handleMCDown = function()
 
                 if (this._getFocussedIndex() == currentFocussedIndex) //didn't move
                 {
-                    if (this.dataList && this.dataList.items)
+                    if (this.dataList && this.dataList.items && this.dataList.itemCount > 0)
                     {
-                        var index = 0;
-                        while (index < this.dataList.items.length && this.dataList.items[index].disabled) index++;
-                        if (index < this.dataList.items.length)
+                        // An unchanged focus can also mean normal scrolling.
+                        // Wrap only if no selectable item remains in this direction.
+                        var nextIndex = currentFocussedIndex + 1;
+                        while (nextIndex < this.dataList.itemCount && this.dataList.items[nextIndex] && this.dataList.items[nextIndex].disabled) nextIndex++;
+                        if (nextIndex >= this.dataList.itemCount)
                         {
-                            this._manageFocus(index);
-                            return 'consumed';
+                            var index = 0;
+                            while (index < this.dataList.itemCount && this.dataList.items[index] && this.dataList.items[index].disabled) index++;
+                            if (index < this.dataList.itemCount && this.dataList.items[index] && !this.dataList.items[index].disabled)
+                            {
+                                this._manageFocus(index);
+                                return 'consumed';
+                            }
                         }
                     }
                 }
@@ -111,14 +132,21 @@ List2Ctrl.prototype._handleMCUp = function()
 
                 if (this._getFocussedIndex() == currentFocussedIndex) //didn't move
                 {
-                    if (this.dataList && this.dataList.items)
+                    if (this.dataList && this.dataList.items && this.dataList.itemCount > 0)
                     {
-                        var index = this.dataList.items.length - 1;
-                        while (index >= 0 && this.dataList.items[index].disabled) index--;
-                        if (index >= 0)
+                        // An unchanged focus can also mean normal scrolling.
+                        // Wrap only if no selectable item remains in this direction.
+                        var nextIndex = currentFocussedIndex - 1;
+                        while (nextIndex >= 0 && this.dataList.items[nextIndex] && this.dataList.items[nextIndex].disabled) nextIndex--;
+                        if (nextIndex < 0)
                         {
-                            this._manageFocus(index);
-                            return 'consumed';
+                            var index = this.dataList.itemCount - 1;
+                            while (index >= 0 && this.dataList.items[index] && this.dataList.items[index].disabled) index--;
+                            if (index >= 0 && this.dataList.items[index] && !this.dataList.items[index].disabled)
+                            {
+                                this._manageFocus(index);
+                                return 'consumed';
+                            }
                         }
                     }
                 }

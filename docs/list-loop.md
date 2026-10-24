@@ -1,47 +1,35 @@
 # List Loop
 
-Wrap between the first and last selectable list items.
+Wrap between the first and last selectable entries in the four multicontroller
+handlers. Normal scrolling across the visible-page threshold is preserved.
+Disabled entries are skipped; missing/unloaded data is not treated as a boundary.
 
-Run `list-loop.sh` from the existing launcher for Install/Uninstall dialogs,
-or use `sh list-loop.sh install|uninstall|restore|status` in a terminal.
-`restore` removes this tweak only; it does not replace the entire target file.
-Reboot the CMU after changing GUI code. Restarting Opera alone is not a verified
-reload method on the tested vehicle.
+Run list-loop.sh from the existing launcher, or use
+`sh list-loop.sh install|uninstall|restore|status`. restore removes this tweak
+only and preserves unrelated changes. The current package can also remove the
+previous List Loop version: uninstall it, then install to apply the correction.
+A direct install over that old version is refused with these instructions.
 
-This is the original AIO tweak port for 74.00.324. The vehicle behavior was
-confirmed on the owner's 74.00.324A EU CMU using the previous installer. This
-new standalone targeted installer still needs a vehicle test.
+The portable scoped AWK transform validates exact original/installed contexts
+and verifies the complete inverse before writing. A shared verified OEM .org
+backup, per-target lock, USB rollback copy and logs protect the operation.
+No complete OEM JavaScript file is included in this PR.
 
-## Targeted changes
+Validation: isolated installer/transform checks on committed excerpts and the
+private complete OEM file; legacy removal; result/cleanup failure tests; 36
+JavaScript boundary/disabled/missing-data regressions. A separate local check
+verifies all 36 install/uninstall order combinations of the three List2 tweaks.
+The corrected behavior and wrappers still require a physical CMU test.
 
-The script contains 8 exact context blocks from the verified OEM and
-patched versions of `List2Ctrl.js`. Its embedded BusyBox-compatible AWK program
-recognizes one complete original or installed state. Missing, duplicate, mixed
-or modified patch locations are refused. Only those blocks are replaced; lines
-outside them are preserved. A change must pass an inverse byte comparison
-before the system file can be written. No on-device diff/patch tool is needed.
+Reboot manually after changing GUI code; the worker CLI never reboots.
+The existing interactive launcher can offer a reboot only after successful cleanup.
 
-The shared adjacent `List2Ctrl.js.org` backup must match the OEM checksum
-`e111883b9dcbeb6bb154521826fcacac`. The first tweak creates it only from that exact OEM
-file. Existing valid originals are retained. If another tweak is already
-installed, its original backup is required. Normal uninstall never copies the
-whole backup over the target, so other tweaks remain installed.
+## Result contract
 
-Logs, the prepared change and the complete previous-file rollback copy are
-written under `logs/list-loop-*/` on the startup USB. Failed writes retry once,
-then restore that previous file, including other tweaks. A per-target lock
-prevents concurrent writes. System read-only and watchdog states are restored
-on exit. USB logging has no internal-storage fallback.
-
-## Tests
-
-`python3 tests/list-loop/run.py` tests the embedded transform against committed
-OEM excerpts, status, install/uninstall/restore, idempotency, foreign changes,
-unknown/mixed/duplicate contexts, backup failures, write rollback, firmware
-gating and installer checksum protection. Mounts, watchdog and commands are
-isolated. It never changes the host's system files or starts a real reboot.
-
-With a local complete OEM file, pass its path as the first argument to exercise
-the same installer against it. The committed excerpts are test data, not GUI
-payloads. Full-file compatibility and combination tests are also performed
-locally against the vehicle backup; complete GUI files are not shipped here.
+Capture stdout, stderr and the exit code separately. Exit 0 means success,
+1 an ordinary failure, and 2 a critical failure requiring manual intervention.
+A critical failure must stop subsequent actions and must not offer a reboot.
+Final success/status output is emitted only after cleanup and result recording.
+Interrupted install/uninstall actions are treated as critical because their
+changes may be incomplete. Exact firmware/lock checks use CMU-compatible awk;
+BusyBox grep on this CMU does not support -x.
