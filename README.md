@@ -21,17 +21,6 @@ A collection of tweaks and modifications for the Mazda infotainment system (CMU 
 
 The launcher includes entries for **Terminal** and **Built-in MZD Scripts** (the stock CMU system menu). **Terminal** closes the launcher and opens the terminal; a USB keyboard is needed to use it. **Reboot** is available from the launcher. Additional `.sh` files placed in the root of the USB drive are also offered after the built-in script entries; select **Open** to run one.
 
-### Alternative: run scripts from Terminal
-
-To open Terminal instead of using the launcher, follow this method:
-
-1. With the USB drive connected, open its contents from the MZD **Entertainment** menu as if starting music playback. This launches the service menu.
-2. Select **Next > Terminal**. A USB keyboard is required for this method.
-3. In Terminal, find the USB mount (usually `/tmp/mnt/sda1` or `/tmp/mnt/sdb1`), then run a script directly, for example `sh fuel-consumption.sh`.
-4. Use the keyboard to inspect terminal output and logs while in the car. Follow the script's prompts.
-
-The launcher is the recommended option for normal use. The terminal method is useful when you need to run a script manually or review its output directly in the car.
-
 ## Available Scripts
 
 ### 1. `hud-eu-region.sh` - HUD Settings Europe Region Mod
@@ -161,10 +150,7 @@ mzd-v74-tweaks/
 ├── build/                             # Shim build and checksum tools
 ├── docs/                              # Additional technical documentation
 ├── tests/                             # Installer and shim tests
-├── images/                            # README screenshots
-├── js/                                # JavaScript utility files
-├── mp3/                               # USB audio files used by the autorun setup
-└── mp3title.txt                       # Audio metadata
+└── images/                            # README screenshots
 ```
 
 ## Common Issues & Troubleshooting
@@ -223,5 +209,4 @@ These modifications alter system files on your Mazda infotainment system. Use at
 ## License
 
 Original modifications by the community.
-The terminal access based on https://github.com/shunceyb/mzd74-tweaks-no-touch.
 MZD UI changes tested and screenshoted with https://github.com/ScorpAL/mzd-emu.
