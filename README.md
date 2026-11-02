@@ -208,5 +208,9 @@ These modifications alter system files on your Mazda infotainment system. Use at
 
 ## License
 
+Project-authored material is licensed under the [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International license (CC BY-NC-SA 4.0)](LICENSE), unless otherwise noted.
+
+Third-party code and assets retain their respective licenses and copyright notices, including the upstream license files distributed with individual tweaks.
+
 Original modifications by the community.
 MZD UI changes tested and screenshoted with https://github.com/ScorpAL/mzd-emu.
